@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/USER/Desktop/**)",
+      "Bash(robocopy \"lavanderia\\\\lavanderia-sastreria\" \"lavanderia2\" /E /XD node_modules dist dist-electron release /XF \"*.log\")",
+      "Bash(cp -r \"/c/Users/USER/Desktop/lavanderia/lavanderia-sastreria/src\" \"/c/Users/USER/Desktop/lavanderia2/\")",
+      "Bash(cp \"/c/Users/USER/Desktop/lavanderia/lavanderia-sastreria/package.json\" \"/c/Users/USER/Desktop/lavanderia2/\")",
+      "Bash(cp \"/c/Users/USER/Desktop/lavanderia/lavanderia-sastreria/package-lock.json\" \"/c/Users/USER/Desktop/lavanderia2/\")",
+      "Bash(cp \"/c/Users/USER/Desktop/lavanderia/lavanderia-sastreria/tsconfig.json\" \"/c/Users/USER/Desktop/lavanderia2/\")",
+      "Bash(cp \"/c/Users/USER/Desktop/lavanderia/lavanderia-sastreria/tsconfig.electron.json\" \"/c/Users/USER/Desktop/lavanderia2/\")",
+      "Bash(cp *)",
+      "Bash(mkdir -p /c/Users/USER/Desktop/lavanderia2/src/backend/modules/audit)",
+      "Bash(cp /c/Users/USER/Desktop/willicolon/Lavanderia3-inicial/Lavanderia3-inicial/src/backend/modules/audit/service.ts /c/Users/USER/Desktop/lavanderia2/src/backend/modules/audit/)",
+      "Bash(mkdir -p /c/Users/USER/Desktop/lavanderia2/src/backend/modules/users)",
+      "Bash(cp /c/Users/USER/Desktop/willicolon/Lavanderia3-inicial/Lavanderia3-inicial/src/backend/modules/users/service.ts /c/Users/USER/Desktop/lavanderia2/src/backend/modules/users/)",
+      "Bash(mkdir -p /c/Users/USER/Desktop/lavanderia2/src/backend/modules/orders/security)",
+      "Bash(cp /c/Users/USER/Desktop/willicolon/Lavanderia3-inicial/Lavanderia3-inicial/src/backend/modules/__TRACKED_VAR__/service.ts /c/Users/USER/Desktop/lavanderia2/src/backend/modules/__TRACKED_VAR__/)",
+      "Bash([ -f \"$V2/src/backend/modules/clients/repositories/client-repository.ts\" ])",
+      "Bash(cp /c/Users/USER/Desktop/willicolon/Lavanderia3-inicial/Lavanderia3-inicial/src/backend/modules/clients/repositories/client-repository.ts /c/Users/USER/Desktop/lavanderia2/src/backend/modules/clients/repositories/)",
+      "Bash([ -f \"$V2/src/backend/modules/orders/repositories/order-repository.ts\" ])",
+      "Bash(cp /c/Users/USER/Desktop/willicolon/Lavanderia3-inicial/Lavanderia3-inicial/src/backend/modules/orders/repositories/order-repository.ts /c/Users/USER/Desktop/lavanderia2/src/backend/modules/orders/repositories/)",
+      "Bash(sed -n 57,75p /c/Users/USER/Desktop/lavanderia2/src/renderer/styles/app.css)",
+      "Bash(sed -n 86,105p /c/Users/USER/Desktop/lavanderia2/src/renderer/styles/app.css)",
+      "Bash(sed -n 144,190p /c/Users/USER/Desktop/lavanderia2/src/renderer/styles/app.css)",
+      "Bash(npx tsc *)",
+      "Bash(python3 *)",
+      "Bash(grep *)"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+dist-electron/
+build/
+out/
+
+# logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# environment variables
+.env
+.env.local
+.env.*.local
+
+# system files
+.DS_Store
+Thumbs.db
+google-oauth.json
+
+# editor
+.vscode/
+.idea/
+
+# electron builder
+release/
+*.blockmap
+
+# cache
+.cache
+.temp
+
+# sqlite databases (si no quieres subirlas)
+*.db
+*.sqlite
+
+# coverage
+coverage/
+

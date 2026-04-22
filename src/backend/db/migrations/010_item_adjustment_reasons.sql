@@ -1,0 +1,3 @@
+ALTER TABLE order_items
+ADD COLUMN IF NOT EXISTS discount_reason TEXT NULL,
+ADD COLUMN IF NOT EXISTS surcharge_reason TEXT NULL;
