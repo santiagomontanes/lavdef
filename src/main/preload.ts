@@ -40,10 +40,14 @@ contextBridge.exposeInMainWorld('desktopApi', {
 
   getOrderProtectionPassword: () =>
     ipcRenderer.invoke('settings:get-order-protection-password'),
+  getAutoReadyByDueDateEnabled: () =>
+    ipcRenderer.invoke('settings:get-auto-ready-by-due-date-enabled'),
   getPdfOutputDir: () =>
     ipcRenderer.invoke('settings:get-pdf-output-dir'),
   updatePdfOutputDir: (value: string | null) =>
     ipcRenderer.invoke('settings:update-pdf-output-dir', value),
+  updateAutoReadyByDueDateEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-auto-ready-by-due-date-enabled', enabled),
 
   updateOrderProtectionPassword: (input: {
   currentPassword: string;

@@ -2,6 +2,8 @@ import type { Kysely } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type { CompanySettings } from '../../../shared/types.js';
 
+const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
+
 export const createSettingsService = (db: Kysely<Database>) => ({
   async getCompanySettings(): Promise<CompanySettings | null> {
     const row = await db
@@ -181,5 +183,47 @@ export const createSettingsService = (db: Kysely<Database>) => ({
     }
 
     return { success: true, value: normalized };
+  },
+
+  async getAutoReadyByDueDateEnabled(): Promise<boolean> {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
+      .orderBy('id desc')
+      .executeTakeFirst();
+
+    if (!setting) return true;
+
+    const normalized = String(setting.setting_value ?? '').trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false';
+  },
+
+  async updateAutoReadyByDueDateEnabled(enabled: boolean): Promise<{ success: true; enabled: boolean }> {
+    const normalized = enabled ? '1' : '0';
+    const existing = await db
+      .selectFrom('app_settings')
+      .select(['id'])
+      .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
+      .orderBy('id desc')
+      .executeTakeFirst();
+
+    if (existing) {
+      await db
+        .updateTable('app_settings')
+        .set({ setting_value: normalized })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await db
+        .insertInto('app_settings')
+        .values({
+          setting_key: AUTO_READY_BY_DUE_DATE_KEY,
+          setting_value: normalized
+        })
+        .execute();
+    }
+
+    return { success: true, enabled };
   }
 });

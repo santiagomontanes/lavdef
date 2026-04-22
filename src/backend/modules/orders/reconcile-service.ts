@@ -1,6 +1,8 @@
 import { sql, type Kysely, type SqlBool } from 'kysely';
 import type { Database } from '../../db/schema.js';
 
+const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
+
 export type ReadyOrderForWhatsApp = {
   orderId: number;
   orderNumber: string;
@@ -85,12 +87,21 @@ export const reconcileOrderStates = async (
   const pendingReadyChecks: PendingReadyCheck[] = [];
   let autoProcessedCount = 0;
 
-  const [statuses, companyRow] = await Promise.all([
+  const [statuses, companyRow, automationSetting] = await Promise.all([
     db.selectFrom('order_statuses').select(['id', 'code']).execute(),
-    db.selectFrom('company_settings').select('company_name').executeTakeFirst()
+    db.selectFrom('company_settings').select('company_name').executeTakeFirst(),
+    db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
+      .orderBy('id desc')
+      .executeTakeFirst()
   ]);
 
   const companyName = String(companyRow?.company_name ?? 'Lavandería');
+  const autoReadyByDueDateEnabled =
+    !automationSetting ||
+    !['0', 'false'].includes(String(automationSetting.setting_value ?? '').trim().toLowerCase());
   const statusMap = new Map(statuses.map((s) => [String(s.code).toUpperCase(), Number(s.id)]));
 
   const createdId = statusMap.get('CREATED');
@@ -179,41 +190,43 @@ export const reconcileOrderStates = async (
     }
 
     // Auto-process expired PENDING entries (still IN_PROGRESS after 5 min)
-    const expiredRows = await db
-      .selectFrom('ready_queue')
-      .innerJoin('orders', 'orders.id', 'ready_queue.order_id')
-      .innerJoin('clients', 'clients.id', 'orders.client_id')
-      .select([
-        'ready_queue.id as queue_id',
-        'orders.id',
-        'orders.order_number',
-        'orders.due_date',
-        'orders.total',
-        'orders.paid_total',
-        'orders.balance_due',
-        'orders.whatsapp_ready_sent',
-        sql<string>`CONCAT(clients.first_name, ' ', clients.last_name)`.as('client_name'),
-        'clients.phone'
-      ])
-      .where('ready_queue.status', '=', 'PENDING')
-      .where('orders.status_id', '=', inProgressId)
-      .where(sql<SqlBool>`ready_queue.auto_process_after IS NOT NULL AND ready_queue.auto_process_after <= NOW()`)
-      .execute();
-
-    for (const row of expiredRows) {
-      await db
-        .updateTable('orders')
-        .set({ status_id: readyId, status_changed_at: sql`NOW()` as unknown as Date })
-        .where('id', '=', row.id)
+    if (autoReadyByDueDateEnabled) {
+      const expiredRows = await db
+        .selectFrom('ready_queue')
+        .innerJoin('orders', 'orders.id', 'ready_queue.order_id')
+        .innerJoin('clients', 'clients.id', 'orders.client_id')
+        .select([
+          'ready_queue.id as queue_id',
+          'orders.id',
+          'orders.order_number',
+          'orders.due_date',
+          'orders.total',
+          'orders.paid_total',
+          'orders.balance_due',
+          'orders.whatsapp_ready_sent',
+          sql<string>`CONCAT(clients.first_name, ' ', clients.last_name)`.as('client_name'),
+          'clients.phone'
+        ])
+        .where('ready_queue.status', '=', 'PENDING')
+        .where('orders.status_id', '=', inProgressId)
+        .where(sql<SqlBool>`ready_queue.auto_process_after IS NOT NULL AND ready_queue.auto_process_after <= NOW()`)
         .execute();
 
-      await db
-        .updateTable('ready_queue')
-        .set({ status: 'AUTO_PROCESSED' })
-        .where('id', '=', (row as any).queue_id)
-        .execute();
+      for (const row of expiredRows) {
+        await db
+          .updateTable('orders')
+          .set({ status_id: readyId, status_changed_at: sql`NOW()` as unknown as Date })
+          .where('id', '=', row.id)
+          .execute();
 
-      autoProcessedCount++;
+        await db
+          .updateTable('ready_queue')
+          .set({ status: 'AUTO_PROCESSED' })
+          .where('id', '=', (row as any).queue_id)
+          .execute();
+
+        autoProcessedCount++;
+      }
     }
   }
 

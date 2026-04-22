@@ -52,6 +52,12 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     enabled: unlocked
   });
 
+  const { data: autoReadyByDueDateEnabled = true } = useQuery({
+    queryKey: ['auto-ready-by-due-date-enabled'],
+    queryFn: api.getAutoReadyByDueDateEnabled,
+    enabled: unlocked
+  });
+
   useEffect(() => {
     if (unlocked && data) setForm(data);
   }, [unlocked, data]);
@@ -104,6 +110,13 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     mutationFn: api.updatePdfOutputDir,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['pdf-output-dir'] });
+    }
+  });
+
+  const updateAutoReadyMutation = useMutation({
+    mutationFn: api.updateAutoReadyByDueDateEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['auto-ready-by-due-date-enabled'] });
     }
   });
 
@@ -341,6 +354,39 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     </p>
   )}
 </div>
+
+      <div className="card-panel stack-gap">
+        <h3>Automatización de órdenes</h3>
+
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={autoReadyByDueDateEnabled}
+            onChange={(e) => updateAutoReadyMutation.mutate(e.target.checked)}
+            disabled={updateAutoReadyMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Cambio automático a "Lista" por fecha promesa</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Si se desactiva, las órdenes vencidas seguirán apareciendo para revisión,
+              pero no cambiarán automáticamente a "Lista".
+            </p>
+          </div>
+        </label>
+
+        {updateAutoReadyMutation.isError && (
+          <p className="error-text">
+            {(updateAutoReadyMutation.error as Error).message}
+          </p>
+        )}
+
+        {updateAutoReadyMutation.isSuccess && (
+          <p style={{ color: 'green', margin: 0 }}>
+            Preferencia de automatización actualizada correctamente.
+          </p>
+        )}
+      </div>
 
       <div className="card-panel stack-gap">
         <h3>PDF y Facturas</h3>

@@ -85,7 +85,9 @@ export const registerIpc = () => {
   const adminOnlyPrefixes = ['services:', 'users:', 'audit:'];
   const adminOnlyChannels = new Set([
     'settings:update-company',
+    'settings:get-auto-ready-by-due-date-enabled',
     'settings:get-order-protection-password',
+    'settings:update-auto-ready-by-due-date-enabled',
     'settings:update-order-protection-password',
     'settings:update-pdf-output-dir',
     'reports:summary',
@@ -251,6 +253,13 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'settings:get-auto-ready-by-due-date-enabled',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getAutoReadyByDueDateEnabled()
+    )
+  );
+
+  ipcMain.handle(
     'settings:get-order-protection-password',
     wrap(async () =>
       createSettingsService(await databaseManager.getDb()).getOrderProtectionPassword()
@@ -268,6 +277,13 @@ export const registerIpc = () => {
     'settings:update-pdf-output-dir',
     wrap(async (value: string | null) =>
       createSettingsService(await databaseManager.getDb()).updatePdfOutputDir(value)
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-auto-ready-by-due-date-enabled',
+    wrap(async (enabled: boolean) =>
+      createSettingsService(await databaseManager.getDb()).updateAutoReadyByDueDateEnabled(Boolean(enabled))
     )
   );
 

@@ -3,6 +3,7 @@ import type { Database } from '../../db/schema.js';
 import type { ReadyQueueItem, ReadyQueueStats, MessageQueueItem } from '../../../shared/types.js';
 
 const AUTO_PROCESS_HOURS = 2;
+const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
 
 const safeDate = (v: unknown): string | null => {
   if (!v) return null;
@@ -25,6 +26,20 @@ const money = (v: number) =>
 export const createReadyQueueService = (db: Kysely<Database>) => {
   const todayColombia = (): string =>
     new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const isAutoReadyByDueDateEnabled = async (): Promise<boolean> => {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
+      .orderBy('id desc')
+      .executeTakeFirst();
+
+    if (!setting) return true;
+
+    const normalized = String(setting.setting_value ?? '').trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false';
+  };
 
   const buildWhatsAppMessage = (params: {
     clientName: string;
@@ -283,6 +298,10 @@ export const createReadyQueueService = (db: Kysely<Database>) => {
     },
 
     async autoProcessPending(): Promise<number> {
+      if (!(await isAutoReadyByDueDateEnabled())) {
+        return 0;
+      }
+
       const today = todayColombia();
       const nowStr = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
 

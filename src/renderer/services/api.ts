@@ -104,10 +104,14 @@ export const api = {
 
   getOrderProtectionPassword: () =>
     unwrap<string | null>(window.desktopApi.getOrderProtectionPassword()),
+  getAutoReadyByDueDateEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getAutoReadyByDueDateEnabled')),
   getPdfOutputDir: () =>
     unwrap<string | null>(callDesktopApi('getPdfOutputDir')),
   updatePdfOutputDir: (value: string | null) =>
     unwrap<{ success: true; value: string | null }>(callDesktopApi('updatePdfOutputDir', value)),
+  updateAutoReadyByDueDateEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(callDesktopApi('updateAutoReadyByDueDateEnabled', enabled)),
 
   updateOrderProtectionPassword: (input: {
   currentPassword: string;

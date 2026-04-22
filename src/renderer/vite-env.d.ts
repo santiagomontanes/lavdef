@@ -40,8 +40,10 @@ declare global {
       activateLicense: (licenseKey: string) => Promise<unknown>;
 
       getOrderProtectionPassword: () => Promise<unknown>;
+      getAutoReadyByDueDateEnabled: () => Promise<unknown>;
       getPdfOutputDir: () => Promise<unknown>;
       updatePdfOutputDir: (value: string | null) => Promise<unknown>;
+      updateAutoReadyByDueDateEnabled: (enabled: boolean) => Promise<unknown>;
       updateOrderProtectionPassword: (input: {
   currentPassword: string;
   newPassword: string;
