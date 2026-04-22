@@ -65,6 +65,11 @@ const normalizePhone = (raw?: string | null) => {
 const money = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
 
+const toDateOnly = (value?: string | null) => {
+  if (!value) return null;
+  return String(value).slice(0, 10);
+};
+
 const buildReadyMessage = ({
   clientName,
   orderNumber,
@@ -128,7 +133,7 @@ export const OrderDetailPage = () => {
   const [passwordModal, setPasswordModal] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<'edit' | 'cancel' | 'status' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'edit' | 'cancel' | 'status' | 'notes' | null>(null);
   const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -210,7 +215,7 @@ export const OrderDetailPage = () => {
     return api.updateOrder(orderId, {
       clientId: data.clientId,
       notes: value,
-      dueDate: data.dueDate,
+      dueDate: toDateOnly(data.dueDate),
       discountTotal: data.discountTotal ?? 0,
       discountReason: data.discountReason ?? null,
       initialPaymentLines: [],
@@ -245,7 +250,6 @@ export const OrderDetailPage = () => {
     await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
     await queryClient.invalidateQueries({ queryKey: ['orders'] });
     showToast('La información de la orden fue actualizada correctamente.', 'success');
-    navigate('/ordenes');
   },
 
   onError: (error) => {
@@ -281,6 +285,12 @@ export const OrderDetailPage = () => {
         const ok = window.confirm('¿Seguro que deseas cancelar esta orden?');
         if (!ok) return;
         await cancelOrderMutation.mutateAsync();
+        return;
+      }
+
+      if (action === 'notes') {
+        await saveNotesMutation.mutateAsync(notes);
+        return;
       }
 
       if (action === 'status' && pendingStatusId !== null) {
@@ -333,7 +343,7 @@ export const OrderDetailPage = () => {
     }
   });
 
-  const requestProtectedAction = (action: 'edit' | 'cancel' | 'status') => {
+  const requestProtectedAction = (action: 'edit' | 'cancel' | 'status' | 'notes') => {
     setPendingAction(action);
     setPassword('');
     setPasswordError(null);
@@ -501,9 +511,8 @@ export const OrderDetailPage = () => {
 
   <div style={{ display: 'flex', gap: 8 }}>
     <Button
-      
-      onClick={() => saveNotesMutation.mutate(notes)}
-      disabled={saveNotesMutation.isPending}
+      onClick={() => requestProtectedAction('notes')}
+      disabled={saveNotesMutation.isPending || verifyPasswordMutation.isPending}
     >
       {saveNotesMutation.isPending ? 'Guardando...' : 'Guardar'}
     </Button>
@@ -732,7 +741,13 @@ export const OrderDetailPage = () => {
         <div className="stack-gap">
           <p>
             Ingresa la contraseña para{' '}
-            {pendingAction === 'edit' ? 'editar' : pendingAction === 'cancel' ? 'cancelar' : 'cambiar el estado de'} la orden.
+            {pendingAction === 'edit'
+              ? 'editar'
+              : pendingAction === 'cancel'
+                ? 'cancelar'
+                : pendingAction === 'notes'
+                  ? 'guardar las notas de'
+                  : 'cambiar el estado de'} la orden.
           </p>
 
           <label>
