@@ -717,6 +717,13 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'cash:closure-detail',
+    wrap(async (closureId: number) =>
+      createCashService(await databaseManager.getDb()).getClosureDetail(closureId)
+    )
+  );
+
+  ipcMain.handle(
     'expenses:list',
     wrap(async () => createExpensesService(await databaseManager.getDb()).list())
   );

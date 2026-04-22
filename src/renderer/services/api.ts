@@ -203,6 +203,8 @@ export const api = {
   unwrap(window.desktopApi.openCashSession(input)),
   closeCashSession: (declaredAmount: number) =>
     unwrap<CashCloseResult>(window.desktopApi.closeCashSession(declaredAmount)),
+  cashClosureDetail: (closureId: number) =>
+    unwrap<CashCloseResult>(callDesktopApi('getCashClosureDetail', closureId)),
   cashSummary: () => unwrap<CashSessionSummary>(window.desktopApi.getCashSummary()),
 
   listDeliveries: () => unwrap<DeliveryRecord[]>(window.desktopApi.listDeliveries()),

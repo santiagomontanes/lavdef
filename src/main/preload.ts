@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   openedByPhone: string;
 }) => ipcRenderer.invoke('cash:open', input),
   closeCashSession: (declaredAmount: number) => ipcRenderer.invoke('cash:close', declaredAmount),
+  getCashClosureDetail: (closureId: number) => ipcRenderer.invoke('cash:closure-detail', closureId),
   getCashSummary: () => ipcRenderer.invoke('cash:summary'),
 
   listExpenses: () => ipcRenderer.invoke('expenses:list'),

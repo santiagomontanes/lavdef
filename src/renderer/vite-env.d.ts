@@ -165,6 +165,7 @@ declare global {
   openedByPhone: string;
 }) => Promise<unknown>;
       closeCashSession: (declaredAmount: number) => Promise<unknown>;
+      getCashClosureDetail: (closureId: number) => Promise<unknown>;
       getCashSummary: () => Promise<unknown>;
 
       listDeliveries: () => Promise<unknown>;

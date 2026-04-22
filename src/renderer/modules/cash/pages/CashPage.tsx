@@ -7,11 +7,13 @@ import {
   Button,
   DataTable,
   Input,
+  Modal,
   PageHeader,
   PriceInput,
   SummaryCard
 } from '@renderer/ui/components';
 import { currency, dateTime } from '@renderer/utils/format';
+import { showToast } from '@renderer/utils/toast';
 
 const ADMIN_WHATSAPP_STORAGE_KEY = 'cash_close_admin_whatsapp';
 const CASH_OPENING_PRESETS_STORAGE_KEY = 'cash_opening_presets_v1';
@@ -423,6 +425,17 @@ export const CashPage = () => {
     queryFn: api.cashSummary
   });
 
+  const { data: pdfOutputDir } = useQuery({
+    queryKey: ['pdf-output-dir'],
+    queryFn: async () => {
+      try {
+        return await api.getPdfOutputDir();
+      } catch {
+        return null;
+      }
+    }
+  });
+
   const { data: printers = [] } = useQuery({
     queryKey: ['printers'],
     queryFn: api.listPrinters,
@@ -449,6 +462,10 @@ export const CashPage = () => {
   });
   const [openCashError, setOpenCashError] = useState<string | null>(null);
   const [lastClosedPreview, setLastClosedPreview] = useState<CashCloseResult | null>(null);
+  const [historicClosurePasswordModal, setHistoricClosurePasswordModal] = useState(false);
+  const [historicClosurePassword, setHistoricClosurePassword] = useState('');
+  const [historicClosurePasswordError, setHistoricClosurePasswordError] = useState<string | null>(null);
+  const [pendingHistoricClosureId, setPendingHistoricClosureId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!data?.activeSession) {
@@ -524,6 +541,28 @@ export const CashPage = () => {
     mutationFn: api.openCashDrawer
   });
 
+  const loadHistoricClosureMutation = useMutation({
+    mutationFn: api.cashClosureDetail,
+    onSuccess: (result) => {
+      setLastClosedPreview(result);
+      setHistoricClosurePasswordModal(false);
+      setHistoricClosurePassword('');
+      setHistoricClosurePasswordError(null);
+      setPendingHistoricClosureId(null);
+    }
+  });
+
+  const verifyHistoricClosurePasswordMutation = useMutation({
+    mutationFn: (password: string) => api.verifyPassword(password),
+    onSuccess: async () => {
+      if (pendingHistoricClosureId === null) return;
+      await loadHistoricClosureMutation.mutateAsync(pendingHistoricClosureId);
+    },
+    onError: (error: Error) => {
+      setHistoricClosurePasswordError(error.message);
+    }
+  });
+
   const totalSessionSales =
     (data?.totalsByMethod ?? []).reduce(
       (sum, item) => sum + Number(item.amount ?? 0),
@@ -536,6 +575,22 @@ export const CashPage = () => {
     () => lastClosedPreview ?? closeMutation.data ?? null,
     [lastClosedPreview, closeMutation.data]
   );
+
+  const handleRequestHistoricClosure = (closureId: number) => {
+    setPendingHistoricClosureId(closureId);
+    setHistoricClosurePassword('');
+    setHistoricClosurePasswordError(null);
+    setHistoricClosurePasswordModal(true);
+  };
+
+  const handleConfirmHistoricClosurePassword = async () => {
+    if (!historicClosurePassword.trim()) {
+      setHistoricClosurePasswordError('Debes ingresar la contraseña.');
+      return;
+    }
+
+    await verifyHistoricClosurePasswordMutation.mutateAsync(historicClosurePassword);
+  };
 
   const handlePrintThermalClose = () => {
     if (!closurePreview) return;
@@ -557,6 +612,22 @@ export const CashPage = () => {
       printWindow.focus();
       printWindow.print();
     };
+  };
+
+  const handleSaveClosurePdf = async () => {
+    if (!closurePreview) return;
+
+    try {
+      const result = await api.printToPdfAuto({
+        defaultFileName: `Cierre-caja-${closurePreview.cashSessionId}-${String(closurePreview.closedAt ?? '').slice(0, 10) || 'sin-fecha'}.pdf`,
+        targetDir: pdfOutputDir ?? null,
+        subfolder: 'Caja'
+      });
+
+      showToast(`PDF guardado en: ${result.path ?? 'carpeta configurada'}`, 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'No fue posible guardar el PDF del cierre.', 'error');
+    }
   };
 
   const handleOpenCash = () => {
@@ -964,6 +1035,9 @@ export const CashPage = () => {
           </p>
 
           <div className="form-actions" style={{ marginTop: 12 }}>
+            <Button variant="secondary" onClick={handleSaveClosurePdf}>
+              Guardar PDF
+            </Button>
             {!isHardwareSupported ? (
               <div className="alert-warning" style={{ width: '100%' }}>
                 {hardwareMessage}
@@ -976,6 +1050,49 @@ export const CashPage = () => {
           </div>
         </div>
       )}
+
+      <div className="card-panel">
+        <h3>Últimos 5 cierres de caja</h3>
+        <DataTable
+          rows={data?.recentClosures ?? []}
+          columns={[
+            {
+              key: 'session',
+              header: 'Sesión',
+              render: (row) => `#${row.cashSessionId}`
+            },
+            {
+              key: 'declared',
+              header: 'Declarado',
+              render: (row) => currency(row.declaredAmount)
+            },
+            {
+              key: 'system',
+              header: 'Sistema',
+              render: (row) => currency(row.systemAmount)
+            },
+            {
+              key: 'closedAt',
+              header: 'Fecha',
+              render: (row) => dateTime(row.closedAt)
+            },
+            {
+              key: 'actions',
+              header: 'Acciones',
+              render: (row) => (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => handleRequestHistoricClosure(row.id)}
+                  disabled={verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending}
+                >
+                  Ver
+                </Button>
+              )
+            }
+          ]}
+        />
+      </div>
 
       {closurePreview?.deliveredOrders?.length ? (
         <div className="card-panel">
@@ -1065,6 +1182,58 @@ export const CashPage = () => {
           />
         </div>
       ) : null}
+
+      <Modal
+        open={historicClosurePasswordModal}
+        title="Ver cierre anterior"
+        onClose={() => {
+          setHistoricClosurePasswordModal(false);
+          setHistoricClosurePassword('');
+          setHistoricClosurePasswordError(null);
+          setPendingHistoricClosureId(null);
+        }}
+      >
+        <div className="stack-gap">
+          <p style={{ margin: 0 }}>
+            Ingresa la misma contraseña administrativa usada para editar órdenes.
+          </p>
+
+          <label>
+            <span>Contraseña</span>
+            <Input
+              type="password"
+              value={historicClosurePassword}
+              onChange={(e) => setHistoricClosurePassword(e.target.value)}
+            />
+          </label>
+
+          {historicClosurePasswordError && (
+            <p className="error-text">{historicClosurePasswordError}</p>
+          )}
+
+          <div className="form-actions">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setHistoricClosurePasswordModal(false);
+                setHistoricClosurePassword('');
+                setHistoricClosurePasswordError(null);
+                setPendingHistoricClosureId(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmHistoricClosurePassword}
+              disabled={verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending}
+            >
+              {verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending
+                ? 'Verificando...'
+                : 'Confirmar'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </section>
   );
 };

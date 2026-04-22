@@ -3,6 +3,7 @@ import type { Database } from '../../db/schema.js';
 import type {
   CashCloseInput,
   CashCloseResult,
+  CashClosureListItem,
   CashOpenInput,
   CashSessionSummary
 } from '../../../shared/types.js';
@@ -10,6 +11,22 @@ import {
   getCurrentSessionUserId,
   getCurrentSessionUserName
 } from '../../../main/services/session-context.js';
+
+const mapClosureListItem = (row: {
+  id: number;
+  cash_session_id: number;
+  declared_amount: number;
+  system_amount: number;
+  difference_amount: number;
+  closed_at: Date;
+}): CashClosureListItem => ({
+  id: row.id,
+  cashSessionId: row.cash_session_id,
+  declaredAmount: Number(row.declared_amount),
+  systemAmount: Number(row.system_amount),
+  differenceAmount: Number(row.difference_amount),
+  closedAt: new Date(row.closed_at).toISOString()
+});
 
 export const createCashService = (db: Kysely<Database>) => ({
   async open(input: CashOpenInput) {
@@ -331,6 +348,171 @@ export const createCashService = (db: Kysely<Database>) => ({
     };
   },
 
+  async getClosureDetail(closureId: number): Promise<CashCloseResult> {
+    const closure = await db
+      .selectFrom('cash_closures as cc')
+      .innerJoin('cash_sessions as cs', 'cs.id', 'cc.cash_session_id')
+      .leftJoin('users as u', 'u.id', 'cc.closed_by')
+      .select([
+        'cc.id',
+        'cc.cash_session_id',
+        'cc.declared_amount',
+        'cc.system_amount',
+        'cc.difference_amount',
+        'cc.closed_at',
+        'cs.opening_amount',
+        'cs.opened_at',
+        'cs.opened_by_name',
+        'cs.opened_by_phone',
+        sql<string>`COALESCE(u.full_name, 'Administrador')`.as('cashier_name')
+      ])
+      .where('cc.id', '=', closureId)
+      .executeTakeFirst();
+
+    if (!closure) {
+      throw new Error('Cierre de caja no encontrado.');
+    }
+
+    const closedAt = new Date(closure.closed_at);
+
+    const company = await db
+      .selectFrom('company_settings')
+      .select([
+        'company_name',
+        'legal_name',
+        'nit',
+        'phone',
+        'address'
+      ])
+      .orderBy('id')
+      .executeTakeFirst();
+
+    const totalsByMethod = await db
+      .selectFrom('payments as p')
+      .innerJoin('payment_methods as pm', 'pm.id', 'p.payment_method_id')
+      .select([
+        sql<string>`pm.name`.as('method_name'),
+        (eb) => eb.fn.sum<number>('p.amount').as('amount')
+      ])
+      .where('p.created_at', '>=', closure.opened_at)
+      .where('p.created_at', '<=', closedAt)
+      .groupBy('pm.name')
+      .execute();
+
+    const expensesByMethod = await db
+      .selectFrom('expenses as e')
+      .leftJoin('payment_methods as pm', 'pm.id', 'e.payment_method_id')
+      .select([
+        sql<string>`COALESCE(pm.name, 'Sin mÃ©todo')`.as('method_name'),
+        (eb) => eb.fn.sum<number>('e.amount').as('amount')
+      ])
+      .where('e.cash_session_id', '=', closure.cash_session_id)
+      .where('e.created_at', '>=', closure.opened_at)
+      .where('e.created_at', '<=', closedAt)
+      .groupBy(sql`COALESCE(pm.name, 'Sin mÃ©todo')`)
+      .execute();
+
+    const totalExpenses = expensesByMethod.reduce(
+      (sum, row) => sum + Number(row.amount ?? 0),
+      0
+    );
+
+    const deliveredOrders = await db
+      .selectFrom('delivery_records as d')
+      .innerJoin('orders as o', 'o.id', 'd.order_id')
+      .leftJoin('payments as p', 'p.order_id', 'o.id')
+      .leftJoin('payment_methods as pm', 'pm.id', 'p.payment_method_id')
+      .select([
+        'o.id as order_id',
+        'o.order_number',
+        'd.delivered_to',
+        'o.total',
+        'o.paid_total',
+        sql<string>`COALESCE(GROUP_CONCAT(DISTINCT pm.name ORDER BY pm.name SEPARATOR ', '), 'Sin mÃ©todo')`.as(
+          'payment_methods'
+        ),
+        sql<Date>`MAX(d.created_at)`.as('delivered_at')
+      ])
+      .where('d.created_at', '>=', closure.opened_at)
+      .where('d.created_at', '<=', closedAt)
+      .groupBy([
+        'o.id',
+        'o.order_number',
+        'd.delivered_to',
+        'o.total',
+        'o.paid_total'
+      ])
+      .orderBy('delivered_at desc')
+      .execute();
+
+    const sessionPayments = await db
+      .selectFrom('payments as p')
+      .innerJoin('orders as o', 'o.id', 'p.order_id')
+      .innerJoin('clients as c', 'c.id', 'o.client_id')
+      .innerJoin('payment_methods as pm', 'pm.id', 'p.payment_method_id')
+      .select([
+        'p.id',
+        'o.id as order_id',
+        'o.order_number',
+        sql<string>`CONCAT(c.first_name, ' ', c.last_name)`.as('client_name'),
+        'p.amount',
+        'p.reference',
+        'p.created_at',
+        sql<string>`pm.name`.as('payment_method_name')
+      ])
+      .where('p.created_at', '>=', closure.opened_at)
+      .where('p.created_at', '<=', closedAt)
+      .orderBy('p.created_at desc')
+      .execute();
+
+    return {
+      closureId: closure.id,
+      cashSessionId: closure.cash_session_id,
+      openingAmount: Number(closure.opening_amount ?? 0),
+      declaredAmount: Number(closure.declared_amount ?? 0),
+      systemAmount: Number(closure.system_amount ?? 0),
+      differenceAmount: Number(closure.difference_amount ?? 0),
+      closedAt: closedAt.toISOString(),
+      cashierName: closure.cashier_name,
+      openedByName: closure.opened_by_name ?? null,
+      openedByPhone: closure.opened_by_phone ?? null,
+      companyName: company?.company_name ?? 'Mi Negocio',
+      companyNit: company?.nit ?? null,
+      companyPhone: company?.phone ?? null,
+      companyAddress: company?.address ?? null,
+      totalsByMethod: totalsByMethod.map((item) => ({
+        methodName: item.method_name,
+        amount: Number(item.amount ?? 0)
+      })),
+      totalExpenses,
+      expensesByMethod: expensesByMethod.map((item) => ({
+        methodName: item.method_name,
+        amount: Number(item.amount ?? 0)
+      })),
+      deliveredOrders: deliveredOrders.map((item) => ({
+        orderId: Number(item.order_id),
+        orderNumber: item.order_number,
+        deliveredTo: item.delivered_to,
+        total: Number(item.total ?? 0),
+        paidTotal: Number(item.paid_total ?? 0),
+        paymentMethods: item.payment_methods,
+        deliveredAt: item.delivered_at
+          ? new Date(item.delivered_at).toISOString()
+          : null
+      })),
+      sessionPayments: sessionPayments.map((item) => ({
+        id: Number(item.id),
+        orderId: Number(item.order_id),
+        orderNumber: item.order_number,
+        clientName: item.client_name,
+        amount: Number(item.amount ?? 0),
+        paymentMethodName: item.payment_method_name,
+        reference: item.reference ?? null,
+        createdAt: new Date(item.created_at).toISOString()
+      }))
+    };
+  },
+
   async summary(): Promise<CashSessionSummary> {
     const active = await db
       .selectFrom('cash_sessions')
@@ -344,6 +526,13 @@ export const createCashService = (db: Kysely<Database>) => ({
       .selectAll()
       .orderBy('id desc')
       .executeTakeFirst();
+
+    const recentClosures = (await db
+      .selectFrom('cash_closures')
+      .selectAll()
+      .orderBy('id desc')
+      .limit(5)
+      .execute()).map(mapClosureListItem);
 
     if (!active) {
       return {
@@ -360,6 +549,7 @@ export const createCashService = (db: Kysely<Database>) => ({
               closedAt: new Date(lastClosure.closed_at).toISOString()
             }
           : null,
+        recentClosures,
         totalsByMethod: [],
         totalExpenses: 0,
         expensesByMethod: [],
@@ -452,6 +642,7 @@ export const createCashService = (db: Kysely<Database>) => ({
             closedAt: new Date(lastClosure.closed_at).toISOString()
           }
         : null,
+      recentClosures,
       totalsByMethod: totalsByMethod.map((item) => ({
         methodName: item.method_name,
         amount: Number(item.amount ?? 0)

@@ -469,6 +469,15 @@ export type CashCloseResult = {
   }>;
 };
 
+export type CashClosureListItem = {
+  id: number;
+  cashSessionId: number;
+  declaredAmount: number;
+  systemAmount: number;
+  differenceAmount: number;
+  closedAt: string;
+};
+
 export type CashSessionSummary = {
   activeSession: {
     id: number;
@@ -488,6 +497,7 @@ export type CashSessionSummary = {
     differenceAmount: number;
     closedAt: string;
   } | null;
+  recentClosures: CashClosureListItem[];
   totalsByMethod: Array<{ methodName: string; amount: number }>;
   totalExpenses: number;
   expensesByMethod: Array<{ methodName: string; amount: number }>;

@@ -67,6 +67,7 @@ const todayKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2
 export const DeliveriesPage = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [showAllInventoryOrders, setShowAllInventoryOrders] = useState(false);
 
   const { data: deliveries = [] } = useQuery({ queryKey: ['deliveries'], queryFn: api.listDeliveries });
   const { data: orders = [] } = useQuery({ queryKey: ['orders'], queryFn: api.listOrders });
@@ -216,6 +217,19 @@ export const DeliveriesPage = () => {
       return !['DELIVERED', 'CANCELLED', 'CANCELED', 'CANCELADO'].includes(statusCode);
     });
   }, [orders]);
+
+  const filteredInventoryRows = useMemo(
+    () =>
+      (inventorySummary?.orders ?? []).filter((o: InventoryOrder) =>
+        inventoryFilter === 'ALL' ? true : o.statusCode === inventoryFilter
+      ),
+    [inventorySummary?.orders, inventoryFilter]
+  );
+
+  const visibleInventoryRows = useMemo(
+    () => (showAllInventoryOrders ? filteredInventoryRows : filteredInventoryRows.slice(0, 10)),
+    [filteredInventoryRows, showAllInventoryOrders]
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -426,14 +440,11 @@ export const DeliveriesPage = () => {
         </div>
 
         {(() => {
-          const filteredInventory = (inventorySummary?.orders ?? []).filter((o: InventoryOrder) =>
-            inventoryFilter === 'ALL' ? true : o.statusCode === inventoryFilter
-          );
-          const totalPrendas = filteredInventory.reduce((sum, o) => sum + Number(o.totalItems ?? 0), 0);
+          const totalPrendas = filteredInventoryRows.reduce((sum, o) => sum + Number(o.totalItems ?? 0), 0);
           return (
             <>
               <DataTable
-                rows={filteredInventory}
+                rows={visibleInventoryRows}
                 columns={[
                   { key: 'order', header: 'N° Orden', render: (row: InventoryOrder) => row.orderNumber },
                   { key: 'client', header: 'Cliente', render: (row: InventoryOrder) => row.clientName },
@@ -459,6 +470,13 @@ export const DeliveriesPage = () => {
                   }
                 ]}
               />
+              {filteredInventoryRows.length > 10 ? (
+                <div className="form-actions no-print" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
+                  <Button type="button" variant="secondary" onClick={() => setShowAllInventoryOrders((prev) => !prev)}>
+                    {showAllInventoryOrders ? 'Mostrar menos' : 'Mostrar todo'}
+                  </Button>
+                </div>
+              ) : null}
               <div style={{
                 display: 'flex',
                 justifyContent: 'flex-end',
