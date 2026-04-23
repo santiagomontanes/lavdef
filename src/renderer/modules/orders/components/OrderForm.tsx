@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import type { CatalogsPayload, Client, OrderDetail, OrderInput, PaymentLineInput } from '@shared/types';
+import { api } from '@renderer/services/api';
 import { Button, FormSection, Input, PriceInput, Select, Textarea } from '@renderer/ui/components';
 import { currency } from '@renderer/utils/format';
 
@@ -50,7 +52,7 @@ const emptyPaymentLine = (methodId: number): PaymentLineInput => ({
 
 /** Computes per-item subtotal and total from base fields (never stale). */
 const computeItemTotals = (item: OrderInput['items'][number]) => {
-  const qty = Math.max(1, Math.trunc(Number(item.quantity || 1)));
+  const qty = Math.max(0.01, Number(item.quantity || 1));
   const price = Number(item.unitPrice || 0);
   const disc = Math.max(0, Math.trunc(Number(item.discountAmount || 0)));
   const surch = Math.max(0, Math.trunc(Number(item.surchargeAmount || 0)));
@@ -58,6 +60,9 @@ const computeItemTotals = (item: OrderInput['items'][number]) => {
   const itemTotal = Math.max(0, itemSubtotal - disc + surch);
   return { itemSubtotal, itemTotal };
 };
+
+const hasDecimalQuantities = (items?: Array<{ quantity: number }>) =>
+  Boolean(items?.some((item) => !Number.isInteger(Number(item.quantity ?? 0))));
 
 export const OrderForm = ({
   clients,
@@ -82,6 +87,11 @@ export const OrderForm = ({
   hideInitialPaymentFields?: boolean;
   submitLabel?: string;
 }) => {
+  const { data: quantityDecimalsEnabled = false } = useQuery({
+    queryKey: ['order-quantity-decimals-enabled'],
+    queryFn: api.getOrderQuantityDecimalsEnabled
+  });
+
   const {
     register,
     control,
@@ -225,7 +235,7 @@ export const OrderForm = ({
               missingAccessories: item.missingAccessories || null,
               customerObservations: item.customerObservations || null,
               internalObservations: item.internalObservations || null,
-              quantity: Math.max(1, Math.trunc(Number(item.quantity || 1))),
+              quantity: Math.max(0.01, Number(item.quantity || 1)),
               unitPrice: Number(item.unitPrice || 0),
               discountAmount: Math.max(0, Math.trunc(Number(item.discountAmount || 0))),
               discountReason: item.discountReason || null,
@@ -323,6 +333,13 @@ export const OrderForm = ({
     );
   }, [clientSearch, searchedClients, clients]);
 
+  const allowDecimalQuantities =
+    quantityDecimalsEnabled ||
+    hasDecimalQuantities(initialValue?.items) ||
+    hasDecimalQuantities(initialDraft?.items);
+  const quantityStep = allowDecimalQuantities ? '0.01' : '1';
+  const quantityMin = allowDecimalQuantities ? '0.01' : '1';
+
   return (
     <form
       className="stack-gap"
@@ -360,7 +377,7 @@ export const OrderForm = ({
               damages: null,
               missingAccessories: null,
               internalObservations: null,
-              quantity: Math.max(1, Math.trunc(Number(item.quantity))),
+              quantity: Math.max(0.01, Number(item.quantity || 1)),
               unitPrice: Number(item.unitPrice),
               discountAmount: Math.max(0, Math.trunc(Number(item.discountAmount))),
               discountReason: item.discountReason || null,
@@ -504,12 +521,27 @@ export const OrderForm = ({
                     <span>Cantidad</span>
                     <Input
                       type="number"
-                      step="1"
-                      min="1"
+                      step={quantityStep}
+                      min={quantityMin}
                       {...register(`items.${index}.quantity` as const, {
-                        valueAsNumber: true
+                        valueAsNumber: true,
+                        validate: (value) => {
+                          const quantity = Number(value);
+                          if (!(quantity > 0)) {
+                            return 'La cantidad debe ser mayor a 0';
+                          }
+
+                          if (!allowDecimalQuantities && !Number.isInteger(quantity)) {
+                            return 'La cantidad debe ser un número entero';
+                          }
+
+                          return true;
+                        }
                       })}
                     />
+                    {errors.items?.[index]?.quantity && (
+                      <small className="error-text">{errors.items[index]?.quantity?.message}</small>
+                    )}
                   </label>
 
                   <label>

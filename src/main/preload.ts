@@ -29,6 +29,18 @@ type DesktopPdfInput = {
   preferCssPageSize?: boolean;
 };
 
+const gpuSafeModeEnabled = process.env.ELECTRON_DISABLE_GPU === 'true';
+const htmlCanvasElementCtor = (globalThis as { HTMLCanvasElement?: { prototype: { getContext: (...args: unknown[]) => unknown } } })
+  .HTMLCanvasElement;
+
+if (gpuSafeModeEnabled && htmlCanvasElementCtor) {
+  const originalGetContext = htmlCanvasElementCtor.prototype.getContext;
+  htmlCanvasElementCtor.prototype.getContext = (function (this: unknown, type: string, ...args: unknown[]) {
+    if (type === 'webgl' || type === 'webgl2') return null;
+    return originalGetContext.call(this, type, ...args);
+  }) as typeof originalGetContext;
+}
+
 contextBridge.exposeInMainWorld('desktopApi', {
   getPlatform: () => process.platform,
   verifyPassword: (password: string) =>
@@ -42,12 +54,24 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('settings:get-order-protection-password'),
   getAutoReadyByDueDateEnabled: () =>
     ipcRenderer.invoke('settings:get-auto-ready-by-due-date-enabled'),
+  getDisableGpuRenderingEnabled: () =>
+    ipcRenderer.invoke('settings:get-disable-gpu-rendering-enabled'),
+  getInvoiceShowAllActiveOrdersEnabled: () =>
+    ipcRenderer.invoke('settings:get-invoice-show-all-active-orders-enabled'),
+  getOrderQuantityDecimalsEnabled: () =>
+    ipcRenderer.invoke('settings:get-order-quantity-decimals-enabled'),
   getPdfOutputDir: () =>
     ipcRenderer.invoke('settings:get-pdf-output-dir'),
   updatePdfOutputDir: (value: string | null) =>
     ipcRenderer.invoke('settings:update-pdf-output-dir', value),
   updateAutoReadyByDueDateEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('settings:update-auto-ready-by-due-date-enabled', enabled),
+  updateDisableGpuRenderingEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-disable-gpu-rendering-enabled', enabled),
+  updateInvoiceShowAllActiveOrdersEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-invoice-show-all-active-orders-enabled', enabled),
+  updateOrderQuantityDecimalsEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-order-quantity-decimals-enabled', enabled),
 
   updateOrderProtectionPassword: (input: {
   currentPassword: string;

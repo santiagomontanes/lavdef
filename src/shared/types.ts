@@ -389,6 +389,7 @@ export type InvoiceDetail = Invoice & {
   generatedBy: string | null;
   softwareName: string;
   whatsappMessage: string;
+  showAllActiveOrders: boolean;
 };
 
 export type DeliveryRecord = {

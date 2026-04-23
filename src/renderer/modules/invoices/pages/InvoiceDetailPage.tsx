@@ -308,9 +308,24 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
 
             <div className="thermal-section">
               <h3>Órdenes pendientes por reclamar</h3>
-              <p>
-                Tienes <strong>{data.activeOrders.length}</strong> orden{data.activeOrders.length !== 1 ? 'es' : ''} pendiente{data.activeOrders.length !== 1 ? 's' : ''} con un total de <strong>{data.activeOrders.reduce((sum, o) => sum + o.itemsCount, 0)}</strong> prenda{data.activeOrders.reduce((sum, o) => sum + o.itemsCount, 0) !== 1 ? 's' : ''} por recoger.
-              </p>
+              {data.showAllActiveOrders ? (
+                data.activeOrders.map((order, index) => (
+                  <div key={order.id} className="thermal-item thermal-active-order">
+                    <div className="thermal-item-row thermal-item-title">
+                      <span>{index + 1}. Orden {order.orderNumber}</span>
+                      <strong>{order.itemsCount} prenda{order.itemsCount !== 1 ? 's' : ''}</strong>
+                    </div>
+                    <div className="thermal-item-row">
+                      <span>Fecha promesa</span>
+                      <span>{renderDateOnly(order.dueDate)}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p>
+                  Tienes <strong>{data.activeOrders.length}</strong> orden{data.activeOrders.length !== 1 ? 'es' : ''} pendiente{data.activeOrders.length !== 1 ? 's' : ''} con un total de <strong>{data.activeOrders.reduce((sum, o) => sum + o.itemsCount, 0)}</strong> prenda{data.activeOrders.reduce((sum, o) => sum + o.itemsCount, 0) !== 1 ? 's' : ''} por recoger.
+                </p>
+              )}
             </div>
           </>
         ) : null}

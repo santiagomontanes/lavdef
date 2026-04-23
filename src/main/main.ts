@@ -1,15 +1,30 @@
-import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
+import type { MessageBoxOptions } from 'electron'
 import path from 'node:path'
 import { registerIpc } from './ipc/register'
 import { autoUpdater } from 'electron-updater'
 import { syncUserPreferences } from './services/telemetry'
 import { databaseManager } from './services/database-manager'
+import { appPreferences } from './services/app-preferences'
 import { reconcileOrderStates } from '../backend/modules/orders/reconcile-service'
 import { createReadyQueueService } from '../backend/modules/ready-queue/service'
 
 const isDev = !app.isPackaged
+const disableGpuRenderingOnStartup = appPreferences.getDisableGpuRenderingOnStartup()
+
+if (disableGpuRenderingOnStartup) {
+  process.env.ELECTRON_DISABLE_GPU = 'true'
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-gpu-compositing')
+  app.commandLine.appendSwitch('disable-gpu-process-crash-limit')
+  app.commandLine.appendSwitch('disable-features', 'VizDisplayCompositor')
+  app.commandLine.appendSwitch('use-gl', 'swiftshader')
+  app.commandLine.appendSwitch('in-process-gpu')
+}
 
 let mainWindow: BrowserWindow | null = null
+let updatePromptOpen = false
 
 // Track which date we last sent the due-tomorrow notification to avoid spamming
 let lastDueTomorrowDate = ''
@@ -24,7 +39,14 @@ const createWindow = async () => {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      ...(disableGpuRenderingOnStartup
+        ? {
+            webgl: false,
+            experimentalFeatures: false,
+            backgroundThrottling: true
+          }
+        : {})
     }
   })
 
@@ -111,6 +133,38 @@ const runReconcile = async () => {
   }
 }
 
+const promptForDownloadedUpdate = async () => {
+  if (updatePromptOpen) return
+
+  updatePromptOpen = true
+
+  try {
+    const dialogOptions: MessageBoxOptions = {
+      type: 'info',
+      buttons: ['Instalar ahora', 'Más tarde'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'Actualización lista',
+      message: 'Hay una actualización descargada y lista para instalar.',
+      detail: 'Si eliges "Más tarde", podrás seguir usando el programa sin que esta actualización te afecte ahora.'
+    }
+    const result =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showMessageBox(mainWindow, dialogOptions)
+        : await dialog.showMessageBox(dialogOptions)
+
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall()
+      return
+    }
+
+    console.log('El usuario decidió posponer la instalación de la actualización.')
+  } finally {
+    updatePromptOpen = false
+  }
+}
+
 ipcMain.handle('orders:trigger-reconcile', async () => {
   await runReconcile()
 })
@@ -172,8 +226,8 @@ app.whenReady().then(async () => {
       })
 
       autoUpdater.on('update-downloaded', () => {
-        console.log('Update descargado, reiniciando...')
-        autoUpdater.quitAndInstall()
+        console.log('Actualización descargada y pendiente de confirmación del usuario.')
+        void promptForDownloadedUpdate()
       })
 
       autoUpdater.on('error', (err) => {

@@ -106,12 +106,28 @@ export const api = {
     unwrap<string | null>(window.desktopApi.getOrderProtectionPassword()),
   getAutoReadyByDueDateEnabled: () =>
     unwrap<boolean>(callDesktopApi('getAutoReadyByDueDateEnabled')),
+  getDisableGpuRenderingEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getDisableGpuRenderingEnabled')),
+  getInvoiceShowAllActiveOrdersEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getInvoiceShowAllActiveOrdersEnabled')),
+  getOrderQuantityDecimalsEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getOrderQuantityDecimalsEnabled')),
   getPdfOutputDir: () =>
     unwrap<string | null>(callDesktopApi('getPdfOutputDir')),
   updatePdfOutputDir: (value: string | null) =>
     unwrap<{ success: true; value: string | null }>(callDesktopApi('updatePdfOutputDir', value)),
   updateAutoReadyByDueDateEnabled: (enabled: boolean) =>
     unwrap<{ success: true; enabled: boolean }>(callDesktopApi('updateAutoReadyByDueDateEnabled', enabled)),
+  updateDisableGpuRenderingEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(callDesktopApi('updateDisableGpuRenderingEnabled', enabled)),
+  updateInvoiceShowAllActiveOrdersEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(
+      callDesktopApi('updateInvoiceShowAllActiveOrdersEnabled', enabled)
+    ),
+  updateOrderQuantityDecimalsEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(
+      callDesktopApi('updateOrderQuantityDecimalsEnabled', enabled)
+    ),
 
   updateOrderProtectionPassword: (input: {
   currentPassword: string;

@@ -22,6 +22,7 @@ import { backupService } from '../services/backup-service.js';
 import { licenseService } from '../services/license-service.js';
 import { initialSetupService } from '../services/initial-setup-service.js';
 import { getRuntimeDiagnostics } from '../services/runtime-diagnostics-service.js';
+import { appPreferences } from '../services/app-preferences.js';
 import {
   clearCurrentSessionUser,
   getCurrentSessionUser,
@@ -86,8 +87,14 @@ export const registerIpc = () => {
   const adminOnlyChannels = new Set([
     'settings:update-company',
     'settings:get-auto-ready-by-due-date-enabled',
+    'settings:get-disable-gpu-rendering-enabled',
+    'settings:get-invoice-show-all-active-orders-enabled',
+    'settings:get-order-quantity-decimals-enabled',
     'settings:get-order-protection-password',
     'settings:update-auto-ready-by-due-date-enabled',
+    'settings:update-disable-gpu-rendering-enabled',
+    'settings:update-invoice-show-all-active-orders-enabled',
+    'settings:update-order-quantity-decimals-enabled',
     'settings:update-order-protection-password',
     'settings:update-pdf-output-dir',
     'reports:summary',
@@ -260,9 +267,28 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'settings:get-disable-gpu-rendering-enabled',
+    wrap(async () => appPreferences.getDisableGpuRenderingOnStartup())
+  );
+
+  ipcMain.handle(
     'settings:get-order-protection-password',
     wrap(async () =>
       createSettingsService(await databaseManager.getDb()).getOrderProtectionPassword()
+    )
+  );
+
+  ipcMain.handle(
+    'settings:get-order-quantity-decimals-enabled',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getOrderQuantityDecimalsEnabled()
+    )
+  );
+
+  ipcMain.handle(
+    'settings:get-invoice-show-all-active-orders-enabled',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getInvoiceShowAllActiveOrdersEnabled()
     )
   );
 
@@ -284,6 +310,27 @@ export const registerIpc = () => {
     'settings:update-auto-ready-by-due-date-enabled',
     wrap(async (enabled: boolean) =>
       createSettingsService(await databaseManager.getDb()).updateAutoReadyByDueDateEnabled(Boolean(enabled))
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-disable-gpu-rendering-enabled',
+    wrap(async (enabled: boolean) =>
+      appPreferences.updateDisableGpuRenderingOnStartup(Boolean(enabled))
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-invoice-show-all-active-orders-enabled',
+    wrap(async (enabled: boolean) =>
+      createSettingsService(await databaseManager.getDb()).updateInvoiceShowAllActiveOrdersEnabled(Boolean(enabled))
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-order-quantity-decimals-enabled',
+    wrap(async (enabled: boolean) =>
+      createSettingsService(await databaseManager.getDb()).updateOrderQuantityDecimalsEnabled(Boolean(enabled))
     )
   );
 

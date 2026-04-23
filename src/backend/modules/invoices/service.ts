@@ -7,6 +7,7 @@ import {
 } from '../../../main/services/session-context.js';
 
 const buildTicketCode = (orderNumber: string) => `TK-${orderNumber}`;
+const INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY = 'invoice_show_all_active_orders';
 
 const buildWhatsappMessage = (invoice: {
   invoiceNumber: string;
@@ -26,6 +27,7 @@ const buildWhatsappMessage = (invoice: {
     dueDate: string | null;
     itemsCount: number;
   }>;
+  showAllActiveOrders?: boolean;
 }) => {
   const formatMoney = (value: number) =>
     `$${Number(value ?? 0).toLocaleString('es-CO')}`;
@@ -65,14 +67,21 @@ const buildWhatsappMessage = (invoice: {
     `Ticket: ${invoice.ticketCode}`,
     invoice.notes ? `Notas: ${invoice.notes}` : null,
     invoice.activeOrders && invoice.activeOrders.length > 0
-      ? [
-          '',
-          '*ÓRDENES ACTIVAS DEL CLIENTE*',
-          ...invoice.activeOrders.map(
-            (order, index) =>
-              `${index + 1}. ${order.orderNumber} | Fecha promesa: ${order.dueDate ? new Date(order.dueDate).toLocaleDateString('es-CO') : 'Sin definir'} | Ítems: ${order.itemsCount}`
-          )
-        ].join('\n')
+      ? invoice.showAllActiveOrders
+        ? [
+            '',
+            '*ÓRDENES ACTIVAS DEL CLIENTE*',
+            ...invoice.activeOrders.map(
+              (order, index) =>
+                `${index + 1}. ${order.orderNumber} | Fecha promesa: ${order.dueDate ? new Date(order.dueDate).toLocaleDateString('es-CO') : 'Sin definir'} | Ítems: ${order.itemsCount}`
+            )
+          ].join('\n')
+        : [
+            '',
+            '*ÓRDENES ACTIVAS DEL CLIENTE*',
+            `Pendientes por reclamar: ${invoice.activeOrders.length}`,
+            `Prendas por recoger: ${invoice.activeOrders.reduce((sum, order) => sum + Number(order.itemsCount ?? 0), 0)}`
+          ].join('\n')
       : null,
     invoice.companyPolicies ? `Políticas: ${invoice.companyPolicies}` : null
   ].filter(Boolean);
@@ -110,6 +119,20 @@ const mapInvoice = (row: any): Invoice => ({
 
 export const createInvoicesService = (db: Kysely<Database>) => {
   let invoiceItemColumnsCache: Set<string> | null = null;
+
+  const getInvoiceShowAllActiveOrdersEnabled = async () => {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY)
+      .orderBy('id desc')
+      .executeTakeFirst();
+
+    if (!setting) return true;
+
+    const normalized = String(setting.setting_value ?? '').trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false';
+  };
 
   const getInvoiceItemColumns = async () => {
     if (invoiceItemColumnsCache) return invoiceItemColumnsCache;
@@ -286,7 +309,10 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .where('i.id', '=', id)
       .executeTakeFirstOrThrow();
 
-    const activeOrders = await getClientActiveOrders(invoice.client_id, invoice.order_id);
+    const [activeOrders, showAllActiveOrders] = await Promise.all([
+      getClientActiveOrders(invoice.client_id, invoice.order_id),
+      getInvoiceShowAllActiveOrdersEnabled()
+    ]);
 
     const items = await db
       .selectFrom('invoice_items_snapshot')
@@ -337,6 +363,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       activeOrders,
       generatedBy: getCurrentSessionUserName() ?? invoice.generated_by ?? null,
       softwareName: 'LavaSuite Desktop',
+      showAllActiveOrders,
       whatsappMessage: buildWhatsappMessage({
         invoiceNumber: mapped.invoiceNumber,
         clientName: mapped.clientName,
@@ -349,6 +376,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         balanceDue: mapped.balanceDue,
         ticketCode: mapped.ticketCode,
         companyName: mapped.companyName,
+        showAllActiveOrders,
         activeOrders: activeOrders.map((order) => ({
           orderNumber: order.orderNumber,
           dueDate: order.dueDate,

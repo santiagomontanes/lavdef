@@ -70,6 +70,32 @@ const toDateOnly = (value?: string | null) => {
   return String(value).slice(0, 10);
 };
 
+const refocusWindow = () => {
+  window.setTimeout(() => {
+    try {
+      window.focus();
+    } catch {
+      // Ignorar si el entorno no permite recuperar el foco.
+    }
+  }, 30);
+
+  window.requestAnimationFrame(() => {
+    try {
+      window.focus();
+    } catch {
+      // Ignorar si el entorno no permite recuperar el foco.
+    }
+  });
+
+  window.setTimeout(() => {
+    try {
+      window.focus();
+    } catch {
+      // Ignorar si el entorno no permite recuperar el foco.
+    }
+  }, 180);
+};
+
 const buildReadyMessage = ({
   clientName,
   orderNumber,
@@ -263,6 +289,9 @@ export const OrderDetailPage = () => {
       await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onSettled: () => {
+      refocusWindow();
     }
   });
 
@@ -282,9 +311,14 @@ export const OrderDetailPage = () => {
       }
 
       if (action === 'cancel') {
+        await cancelOrderMutation.mutateAsync();
+        refocusWindow();
+        return;
         const ok = window.confirm('¿Seguro que deseas cancelar esta orden?');
+        refocusWindow();
         if (!ok) return;
         await cancelOrderMutation.mutateAsync();
+        refocusWindow();
         return;
       }
 

@@ -23,7 +23,7 @@ const orderItemSchema = z.object({
   garmentTypeId: z.number().nullable(),
   serviceId: z.number().nullable(),
   description: z.string().trim().min(3),
-  quantity: z.number().int().positive(),
+  quantity: z.number().positive(),
   color: z.string().nullable(),
   brand: z.string().nullable(),
   sizeReference: z.string().nullable(),
@@ -110,7 +110,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
     );
 
     return items.map((item) => {
-      const quantity = Math.max(1, Math.trunc(Number(item.quantity)));
+      const quantity = Math.max(0.01, Number(item.quantity));
       const unitPrice = item.serviceId
         ? Number(servicePriceMap.get(item.serviceId) ?? item.unitPrice)
         : Number(item.unitPrice);
@@ -530,7 +530,8 @@ export const createOrdersService = (db: Kysely<Database>) => {
           .executeTakeFirst()
       : null;
 
-    if (totalPaid > 0 && !activeCashSession) {
+    // Keep cancellation non-blocking even if cash is closed.
+    if (false && totalPaid > 0 && !activeCashSession) {
       throw new Error(
         'La orden tiene pagos registrados y la caja está cerrada. Abre caja para registrar la devolución.'
       );
@@ -595,6 +596,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
             statusName: cancelStatus.name,
             refundedTotal: totalPaid,
             cashSessionId: activeCashSession?.id ?? null,
+            refundMovementCreated: Boolean(activeCashSession && orderPayments.length > 0),
             actorName: actorName()
           })
         })

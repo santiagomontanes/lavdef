@@ -58,6 +58,24 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     enabled: unlocked
   });
 
+  const { data: invoiceShowAllActiveOrdersEnabled = true } = useQuery({
+    queryKey: ['invoice-show-all-active-orders-enabled'],
+    queryFn: api.getInvoiceShowAllActiveOrdersEnabled,
+    enabled: unlocked
+  });
+
+  const { data: orderQuantityDecimalsEnabled = false } = useQuery({
+    queryKey: ['order-quantity-decimals-enabled'],
+    queryFn: api.getOrderQuantityDecimalsEnabled,
+    enabled: unlocked
+  });
+
+  const { data: disableGpuRenderingEnabled = false } = useQuery({
+    queryKey: ['disable-gpu-rendering-enabled'],
+    queryFn: api.getDisableGpuRenderingEnabled,
+    enabled: unlocked
+  });
+
   useEffect(() => {
     if (unlocked && data) setForm(data);
   }, [unlocked, data]);
@@ -117,6 +135,27 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     mutationFn: api.updateAutoReadyByDueDateEnabled,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['auto-ready-by-due-date-enabled'] });
+    }
+  });
+
+  const updateInvoiceActiveOrdersModeMutation = useMutation({
+    mutationFn: api.updateInvoiceShowAllActiveOrdersEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['invoice-show-all-active-orders-enabled'] });
+    }
+  });
+
+  const updateOrderQuantityDecimalsMutation = useMutation({
+    mutationFn: api.updateOrderQuantityDecimalsEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['order-quantity-decimals-enabled'] });
+    }
+  });
+
+  const updateDisableGpuRenderingMutation = useMutation({
+    mutationFn: api.updateDisableGpuRenderingEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['disable-gpu-rendering-enabled'] });
     }
   });
 
@@ -389,7 +428,112 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
       </div>
 
       <div className="card-panel stack-gap">
+        <h3>Automatización de cantidades</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={orderQuantityDecimalsEnabled}
+            onChange={(e) => updateOrderQuantityDecimalsMutation.mutate(e.target.checked)}
+            disabled={updateOrderQuantityDecimalsMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Permitir cantidades decimales en órdenes</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Si se activa, la cantidad podrá usar valores como 1.5 o 1.8. Si se desactiva, la captura nueva usará solo enteros.
+            </p>
+          </div>
+        </label>
+
+        {updateOrderQuantityDecimalsMutation.isError && (
+          <p className="error-text">
+            {(updateOrderQuantityDecimalsMutation.error as Error).message}
+          </p>
+        )}
+
+        {updateOrderQuantityDecimalsMutation.isSuccess && (
+          <p style={{ color: 'green', margin: 0 }}>
+            Preferencia de cantidades actualizada correctamente.
+          </p>
+        )}
+      </div>
+
+      <div className="card-panel stack-gap">
+        <h3>Compatibilidad de video</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={disableGpuRenderingEnabled}
+            onChange={(e) => updateDisableGpuRenderingMutation.mutate(e.target.checked)}
+            disabled={updateDisableGpuRenderingMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Iniciar sin renderizado por GPU</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Si se activa, el programa arrancará usando CPU en lugar de aceleración por hardware.
+              Úsalo si este computador presenta fallas de video, congelamientos o pantallazos azules.
+            </p>
+          </div>
+        </label>
+
+        <p style={{ margin: 0, color: '#92400e', fontSize: 13 }}>
+          Este cambio aplica en el siguiente reinicio de la aplicación.
+        </p>
+
+        <div className="form-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => api.restartApp()}
+          >
+            Reiniciar ahora
+          </Button>
+        </div>
+
+        {updateDisableGpuRenderingMutation.isError && (
+          <p className="error-text">
+            {(updateDisableGpuRenderingMutation.error as Error).message}
+          </p>
+        )}
+
+        {updateDisableGpuRenderingMutation.isSuccess && (
+          <p style={{ color: 'green', margin: 0 }}>
+            Preferencia de video actualizada correctamente.
+          </p>
+        )}
+      </div>
+
+      <div className="card-panel stack-gap">
         <h3>PDF y Facturas</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={invoiceShowAllActiveOrdersEnabled}
+            onChange={(e) => updateInvoiceActiveOrdersModeMutation.mutate(e.target.checked)}
+            disabled={updateInvoiceActiveOrdersModeMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Mostrar todas las órdenes pendientes del cliente en la factura</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Si se desactiva, la factura solo mostrará un resumen corto de las órdenes por reclamar.
+            </p>
+          </div>
+        </label>
+
+        {updateInvoiceActiveOrdersModeMutation.isError && (
+          <p className="error-text">
+            {(updateInvoiceActiveOrdersModeMutation.error as Error).message}
+          </p>
+        )}
+
+        {updateInvoiceActiveOrdersModeMutation.isSuccess && (
+          <p style={{ margin: 0, color: 'green' }}>
+            Preferencia de visualización de facturas actualizada correctamente.
+          </p>
+        )}
+
         <label>
           <span>Carpeta de guardado PDF (facturas/reportes)</span>
           <Input
