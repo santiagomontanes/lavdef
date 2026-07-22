@@ -1,23 +1,31 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Client } from '@shared/types';
+import type { Client, ClientMergeResult } from '@shared/types';
 import { api } from '@renderer/services/api';
 import { useModal } from '@renderer/hooks/useModal';
 import { Button, DataTable, Modal, PageHeader } from '@renderer/ui/components';
+import { showToast } from '@renderer/utils/toast';
 import { ClientForm } from '../components/ClientForm';
+
+type MergeContext = {
+  duplicate: Client;
+  primaryId: number | null;
+};
 
 export const ClientsPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [createFormKey, setCreateFormKey] = useState(0);
   const [deleteInfo, setDeleteInfo] = useState<string | null>(null);
+  const [mergeCtx, setMergeCtx] = useState<MergeContext | null>(null);
+  const [mergeSearch, setMergeSearch] = useState('');
   const editModal = useModal<Client>();
   const { data = [] } = useQuery({ queryKey: ['clients'], queryFn: api.listClients });
 
   const createMutation = useMutation({
     mutationFn: api.createClient,
     onSuccess: async () => {
-      setCreateFormKey((k) => k + 1); // resetea el formulario montando de nuevo el componente
+      setCreateFormKey((k) => k + 1);
       await queryClient.invalidateQueries({ queryKey: ['clients'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
@@ -25,7 +33,10 @@ export const ClientsPage = () => {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => api.updateClient(id, data),
-    onSuccess: async () => { editModal.close(); await queryClient.invalidateQueries({ queryKey: ['clients'] }); }
+    onSuccess: async () => {
+      editModal.close();
+      await queryClient.invalidateQueries({ queryKey: ['clients'] });
+    }
   });
 
   const deleteMutation = useMutation({
@@ -36,18 +47,64 @@ export const ClientsPage = () => {
     }
   });
 
+  const mergeMutation = useMutation({
+    mutationFn: ({ primaryId, duplicateId }: { primaryId: number; duplicateId: number }) =>
+      api.mergeClients(primaryId, duplicateId),
+    onSuccess: async (result: ClientMergeResult) => {
+      setMergeCtx(null);
+      setMergeSearch('');
+      await queryClient.invalidateQueries({ queryKey: ['clients'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      const moved = result.movedCounts;
+      const summary = [
+        moved.orders > 0 ? `${moved.orders} órdenes` : null,
+        moved.invoices > 0 ? `${moved.invoices} facturas` : null,
+        moved.payments > 0 ? `${moved.payments} pagos` : null,
+        moved.deliveries > 0 ? `${moved.deliveries} entregas` : null,
+        moved.measurements > 0 ? `${moved.measurements} mediciones` : null
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'sin historial';
+      showToast(
+        `Fusión exitosa: se reasignó ${summary} a ${result.primary.firstName} ${result.primary.lastName}.`,
+        'success'
+      );
+    },
+    onError: (error: Error) => {
+      showToast(error.message, 'error');
+    }
+  });
+
   const filtered = useMemo(
-    () => data.filter((client) =>
-      `${client.firstName} ${client.lastName} ${client.phone}`.toLowerCase().includes(search.toLowerCase())
-    ),
+    () =>
+      data.filter((client) =>
+        `${client.firstName} ${client.lastName} ${client.phone} ${client.code}`
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      ),
     [data, search]
   );
+
+  const mergeCandidates = useMemo(() => {
+    if (!mergeCtx) return [] as Client[];
+    const term = mergeSearch.trim().toLowerCase();
+    return data
+      .filter((c) => c.id !== mergeCtx.duplicate.id)
+      .filter((c) =>
+        !term
+          ? true
+          : `${c.firstName} ${c.lastName} ${c.phone} ${c.code}`.toLowerCase().includes(term)
+      )
+      .slice(0, 25);
+  }, [data, mergeSearch, mergeCtx]);
 
   return (
     <section className="stack-gap">
       <PageHeader
         title="Clientes"
-        subtitle="Listado y formulario funcional para registrar, editar y eliminar clientes."
+        subtitle="Listado y formulario funcional para registrar, editar, fusionar y eliminar clientes."
         actions={
           <input
             className="field compact-field"
@@ -67,17 +124,35 @@ export const ClientsPage = () => {
               { key: 'name', header: 'Cliente', render: (row) => `${row.firstName} ${row.lastName}` },
               { key: 'phone', header: 'Teléfono', render: (row) => row.phone },
               {
+                key: 'orders',
+                header: 'Órdenes',
+                render: (row) => row.ordersCount ?? 0
+              },
+              {
                 key: 'actions',
                 header: 'Acciones',
                 render: (row) => (
                   <div className="row-actions">
-                    <Button variant="secondary" onClick={() => editModal.open(row)}>Editar</Button>
+                    <Button variant="secondary" onClick={() => editModal.open(row)}>
+                      Editar
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setMergeCtx({ duplicate: row, primaryId: null });
+                        setMergeSearch('');
+                      }}
+                      title="Fusionar este cliente duplicado en otro existente"
+                    >
+                      Fusionar duplicado
+                    </Button>
                     <Button
                       variant="danger"
                       onClick={() => {
                         if (Number(row.ordersCount ?? 0) > 0) {
                           setDeleteInfo(
-                            `No se puede eliminar este cliente porque tiene ${row.ordersCount} orden(es) creada(s).`
+                            `No se puede eliminar este cliente porque tiene ${row.ordersCount} orden(es). ` +
+                              `Si es un duplicado, usa "Fusionar duplicado".`
                           );
                           return;
                         }
@@ -102,10 +177,13 @@ export const ClientsPage = () => {
 
         <div className="card-panel">
           <PageHeader title="Nuevo cliente" />
-          <ClientForm key={createFormKey} onSubmit={(value) => createMutation.mutate(value)} />
-          {createMutation.isError && (
-            <p className="error-text">{(createMutation.error as Error).message}</p>
-          )}
+          <ClientForm
+            key={createFormKey}
+            onSubmit={(value, options) =>
+              createMutation.mutate({ ...value, force: options?.force ?? false })
+            }
+            submitError={createMutation.error as Error | null}
+          />
           {createMutation.isSuccess && (
             <p style={{ color: '#16a34a', fontSize: 13, marginTop: 8 }}>
               Cliente registrado correctamente.
@@ -121,10 +199,115 @@ export const ClientsPage = () => {
           onSubmit={(value) =>
             editModal.payload && updateMutation.mutate({ id: editModal.payload.id, data: value })
           }
+          submitError={updateMutation.error as Error | null}
         />
-        {updateMutation.isError && (
-          <p className="error-text">{(updateMutation.error as Error).message}</p>
-        )}
+      </Modal>
+
+      <Modal
+        open={!!mergeCtx}
+        title="Fusionar cliente duplicado"
+        onClose={() => {
+          setMergeCtx(null);
+          setMergeSearch('');
+        }}
+      >
+        {mergeCtx ? (
+          <div className="stack-gap">
+            <p style={{ marginTop: 0 }}>
+              Vas a mover todo el historial (órdenes, facturas, pagos, entregas, mediciones) del
+              cliente duplicado <strong>{mergeCtx.duplicate.code} · {mergeCtx.duplicate.firstName} {mergeCtx.duplicate.lastName}</strong>{' '}
+              hacia un cliente principal. El cliente duplicado se eliminará al finalizar.
+            </p>
+
+            <input
+              className="field"
+              placeholder="Buscar cliente principal por nombre, teléfono o código"
+              value={mergeSearch}
+              onChange={(e) => setMergeSearch(e.target.value)}
+              autoFocus
+            />
+
+            <div
+              style={{
+                maxHeight: 280,
+                overflow: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6
+              }}
+            >
+              <table style={{ width: '100%', fontSize: 13 }}>
+                <thead style={{ background: '#f9fafb' }}>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Código</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Cliente</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Teléfono</th>
+                    <th style={{ textAlign: 'right', padding: 8 }}>Seleccionar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mergeCandidates.map((c) => (
+                    <tr
+                      key={c.id}
+                      style={{
+                        background: mergeCtx.primaryId === c.id ? '#ecfdf5' : undefined,
+                        borderTop: '1px solid #f1f5f9'
+                      }}
+                    >
+                      <td style={{ padding: 8 }}>{c.code}</td>
+                      <td style={{ padding: 8 }}>
+                        {c.firstName} {c.lastName}
+                      </td>
+                      <td style={{ padding: 8 }}>{c.phone}</td>
+                      <td style={{ padding: 8, textAlign: 'right' }}>
+                        <Button
+                          variant={mergeCtx.primaryId === c.id ? 'primary' : 'secondary'}
+                          onClick={() => setMergeCtx({ ...mergeCtx, primaryId: c.id })}
+                        >
+                          {mergeCtx.primaryId === c.id ? 'Elegido' : 'Elegir'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {mergeCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: 12, color: '#6b7280' }}>
+                        No hay coincidencias. Ajusta el término de búsqueda.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="form-actions">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setMergeCtx(null);
+                  setMergeSearch('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                disabled={!mergeCtx.primaryId || mergeMutation.isPending}
+                onClick={() => {
+                  if (!mergeCtx.primaryId) return;
+                  const ok = window.confirm(
+                    `¿Confirmas la fusión? Se moverá el historial al cliente principal y se eliminará ${mergeCtx.duplicate.code}. Esta acción es irreversible.`
+                  );
+                  if (!ok) return;
+                  mergeMutation.mutate({
+                    primaryId: mergeCtx.primaryId,
+                    duplicateId: mergeCtx.duplicate.id
+                  });
+                }}
+              >
+                {mergeMutation.isPending ? 'Fusionando...' : 'Fusionar ahora'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       {deleteMutation.isError && (

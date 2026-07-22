@@ -15,6 +15,8 @@ const schema = z.object({
   receiverPhone: z.string().nullable().optional(),
   relationshipToClient: z.string().nullable().optional(),
   receiverSignature: z.string().nullable().optional(),
+  deliveryType: z.enum(['COMPLETE', 'PARTIAL']).optional().default('COMPLETE'),
+  pendingDeliveryNotes: z.string().nullable().optional(),
   ticketCode: z.string().nullable().optional()
 });
 
@@ -26,6 +28,8 @@ const mapDelivery = (row: any): DeliveryRecord => ({
   receiverPhone: row.receiver_phone,
   relationshipToClient: row.relationship_to_client,
   receiverSignature: row.receiver_signature,
+  deliveryType: row.delivery_type ?? 'COMPLETE',
+  pendingDeliveryNotes: row.pending_delivery_notes ?? null,
   outstandingBalance: Number(row.outstanding_balance),
   ticketCode: row.ticket_code,
   createdAt: new Date(row.created_at).toISOString()
@@ -37,7 +41,7 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
       await db
         .selectFrom('delivery_records')
         .selectAll()
-        .orderBy('id desc')
+        .orderBy('id', 'desc')
         .execute()
     ).map(mapDelivery);
   },
@@ -46,6 +50,15 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
     const parsed = schema.parse(input);
     const actorId = getCurrentSessionUserId() ?? 1;
     const actorName = getCurrentSessionUserName();
+    const deliveryType = parsed.deliveryType ?? 'COMPLETE';
+    const pendingDeliveryNotes =
+      deliveryType === 'PARTIAL'
+        ? String(parsed.pendingDeliveryNotes ?? '').trim()
+        : null;
+
+    if (deliveryType === 'PARTIAL' && !pendingDeliveryNotes) {
+      throw new Error('Debes indicar qué queda pendiente por entregar.');
+    }
 
     const order = await db
       .selectFrom('orders as o')
@@ -62,7 +75,7 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
       throw new Error('La orden no está lista para entrega.');
     }
 
-    if (Number(order.balance_due) > 0) {
+    if (deliveryType === 'COMPLETE' && Number(order.balance_due) > 0) {
       throw new Error('No se puede entregar una orden con saldo pendiente.');
     }
 
@@ -76,20 +89,23 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
           receiver_phone: parsed.receiverPhone?.trim() || null,
           relationship_to_client: parsed.relationshipToClient?.trim() || null,
           receiver_signature: parsed.receiverSignature?.trim() || null,
-          outstanding_balance: 0,
+          delivery_type: deliveryType,
+          pending_delivery_notes: pendingDeliveryNotes,
+          outstanding_balance: Number(order.balance_due ?? 0),
           ticket_code: parsed.ticketCode?.trim() || ''
         })
         .executeTakeFirstOrThrow();
 
-      const deliveredStatus = await trx
+      const nextStatusCode = deliveryType === 'PARTIAL' ? 'PARTIAL_DELIVERY' : 'DELIVERED';
+      const nextStatus = await trx
         .selectFrom('order_statuses')
         .select('id')
-        .where('code', '=', 'DELIVERED')
+        .where('code', '=', nextStatusCode)
         .executeTakeFirstOrThrow();
 
       await trx
         .updateTable('orders')
-        .set({ status_id: deliveredStatus.id })
+        .set({ status_id: nextStatus.id })
         .where('id', '=', parsed.orderId)
         .execute();
 
@@ -97,8 +113,11 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
         .insertInto('order_status_history')
         .values({
           order_id: parsed.orderId,
-          status_id: deliveredStatus.id,
-          notes: 'Orden entregada'
+          status_id: nextStatus.id,
+          notes:
+            deliveryType === 'PARTIAL'
+              ? `Entrega parcial. Pendiente por entregar: ${pendingDeliveryNotes}`
+              : 'Orden entregada'
         })
         .execute();
 
@@ -107,7 +126,10 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
         .values({
           order_id: parsed.orderId,
           event_type: 'DELIVERY',
-          description: 'Entrega registrada'
+          description:
+            deliveryType === 'PARTIAL'
+              ? `Entrega parcial registrada. Pendiente por entregar: ${pendingDeliveryNotes}`
+              : 'Entrega registrada'
         })
         .execute();
 
@@ -125,6 +147,8 @@ export const createDeliveriesService = (db: Kysely<Database>) => ({
             receiverPhone: parsed.receiverPhone?.trim() || null,
             relationshipToClient: parsed.relationshipToClient?.trim() || null,
             receiverSignature: parsed.receiverSignature?.trim() || null,
+            deliveryType,
+            pendingDeliveryNotes,
             ticketCode: parsed.ticketCode?.trim() || ''
           })
         })

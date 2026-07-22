@@ -24,7 +24,22 @@
       "Bash(sed -n 144,190p /c/Users/USER/Desktop/lavanderia2/src/renderer/styles/app.css)",
       "Bash(npx tsc *)",
       "Bash(python3 *)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(dir *)",
+      "Bash(npx vite *)",
+      "Bash(mkdir -p \"/c/Users/USER/.claude/projects/C--Users-USER-Desktop-lavdefv2-lavanderia-lavanderiasoftware/memory\")",
+      "Read(//c/Users/USER/.claude/projects/C--Users-USER-Desktop-lavdefv2-lavanderia-lavanderiasoftware/**)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(tee /tmp/dist-win-output.log)",
+      "Bash(GH_TOKEN='***REDACTED***' npm run dist:win)",
+      "Bash(gh release *)",
+      "Bash(curl -s -H \"Authorization: token ***REDACTED***\" https://api.github.com/repos/santiagomontanes/lavanderia-sastreria/releases/tags/v1.1.6)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push origin main)",
+      "Bash(git commit *)"
     ]
   }
 }

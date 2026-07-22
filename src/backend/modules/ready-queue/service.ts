@@ -1,4 +1,4 @@
-import { sql, type Kysely, type SqlBool } from 'kysely';
+﻿import { sql, type Kysely, type SqlBool } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type { ReadyQueueItem, ReadyQueueStats, MessageQueueItem } from '../../../shared/types.js';
 
@@ -32,7 +32,7 @@ export const createReadyQueueService = (db: Kysely<Database>) => {
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!setting) return true;

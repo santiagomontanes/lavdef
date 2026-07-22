@@ -16,7 +16,7 @@ import { showToast } from '@renderer/utils/toast';
 import { PaymentForm } from '@renderer/modules/payments/components/PaymentForm';
 import { OrderForm } from '../components/OrderForm';
 
-import type { OrderStatus } from '@shared/types';
+import type { OrderStatus, Payment, SessionUser } from '@shared/types';
 
 const buildOrderDraftStorageKey = (orderId: number) => `lavasuite:order-edit-draft:${orderId}`;
 
@@ -137,7 +137,7 @@ const buildReadyMessage = ({
   );
 };
 
-export const OrderDetailPage = () => {
+export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
   const { isHardwareSupported, message: hardwareMessage } = useHardwareAvailability();
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
@@ -150,9 +150,14 @@ export const OrderDetailPage = () => {
   const orderId = Number(params.orderId);
   const navigate = useNavigate();
   const [notes, setNotes] = useState('');
+  const [notesEdited, setNotesEdited] = useState(false);
 
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('Resumen');
   const [paymentModal, setPaymentModal] = useState(false);
+  const [voidPaymentModal, setVoidPaymentModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [voidPaymentPassword, setVoidPaymentPassword] = useState('');
+  const [voidPaymentReason, setVoidPaymentReason] = useState('');
   const [editModal, setEditModal] = useState(false);
   const [restoredEditDraft, setRestoredEditDraft] = useState<any | null>(null);
 
@@ -190,6 +195,7 @@ export const OrderDetailPage = () => {
   });
 
   const isCashOpen = Boolean(cashSummary?.activeSession);
+  const isAdmin = Number(user.roleId) === 1;
 
   const paymentMutation = useMutation({
     mutationFn: api.createPaymentBatch,
@@ -198,6 +204,7 @@ export const OrderDetailPage = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
       await queryClient.invalidateQueries({ queryKey: ['payments'] });
       await queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -220,6 +227,33 @@ export const OrderDetailPage = () => {
     }
   });
 
+  const voidPaymentMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedPayment) throw new Error('Selecciona un pago para anular.');
+      return api.voidPayment({
+        paymentId: selectedPayment.id,
+        adminPassword: voidPaymentPassword,
+        reason: voidPaymentReason
+      });
+    },
+    onSuccess: async () => {
+      setVoidPaymentModal(false);
+      setSelectedPayment(null);
+      setVoidPaymentPassword('');
+      setVoidPaymentReason('');
+
+      await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
+      await queryClient.invalidateQueries({ queryKey: ['payments'] });
+      await queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoice-from-order', orderId] });
+      showToast('Pago anulado correctamente.', 'success');
+    }
+  });
+
   const updateOrderMutation = useMutation({
     mutationFn: (input: any) => api.updateOrder(orderId, input),
     onSuccess: async () => {
@@ -228,6 +262,9 @@ export const OrderDetailPage = () => {
       setEditModal(false);
       await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoice-from-order', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       showToast('La orden fue actualizada correctamente.', 'success');
       navigate('/ordenes');
@@ -235,59 +272,40 @@ export const OrderDetailPage = () => {
   });
 
   const saveNotesMutation = useMutation({
-  mutationFn: async (value: string) => {
-    if (!data) throw new Error('No hay datos de la orden');
+    // Mutation dedicada: solo actualiza orders.notes. Antes esto pasaba
+    // por updateOrder, que validaba todos los items y re-cobraba el total.
+    // El efecto colateral era que las notas "se revertían" si algún item
+    // fallaba la validación, o si el refetch de la query [order-detail]
+    // pisaba el draft local antes de que el modal se cerrara.
+    mutationFn: async (value: string) => api.updateInvoiceNotes(orderId, value),
 
-    return api.updateOrder(orderId, {
-      clientId: data.clientId,
-      notes: value,
-      dueDate: toDateOnly(data.dueDate),
-      discountTotal: data.discountTotal ?? 0,
-      discountReason: data.discountReason ?? null,
-      initialPaymentLines: [],
-      items: data.items.map((item) => ({
-        garmentTypeId: item.garmentTypeId,
-        serviceId: item.serviceId,
-        description: item.description,
-        quantity: item.quantity,
-        color: item.color,
-        brand: item.brand,
-        sizeReference: item.sizeReference,
-        material: item.material,
-        receivedCondition: item.receivedCondition,
-        workDetail: item.workDetail,
-        stains: item.stains,
-        damages: item.damages,
-        missingAccessories: item.missingAccessories,
-        customerObservations: item.customerObservations,
-        internalObservations: item.internalObservations,
-        unitPrice: item.unitPrice,
-        discountAmount: item.discountAmount ?? 0,
-        discountReason: item.discountReason ?? null,
-        surchargeAmount: item.surchargeAmount ?? 0,
-        surchargeReason: item.surchargeReason ?? null,
-        subtotal: item.subtotal,
-        total: item.total
-      }))
-    });
-  },
+    onSuccess: async (result) => {
+      // Sincroniza la caché sin disparar un refetch que pueda pisar más
+      // tarde la edición visible.
+      queryClient.setQueryData(['order-detail', orderId], (prev: any) =>
+        prev ? { ...prev, notes: result.notes } : prev
+      );
+      queryClient.setQueryData(['invoice-from-order', orderId], (prev: any) =>
+        prev ? { ...prev, notes: result.notes } : prev
+      );
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoice-from-order', orderId] });
+      showToast('Notas de la orden guardadas correctamente.', 'success');
+    },
 
-  onSuccess: async () => {
-    await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
-    await queryClient.invalidateQueries({ queryKey: ['orders'] });
-    showToast('La información de la orden fue actualizada correctamente.', 'success');
-  },
-
-  onError: (error) => {
-    showToast(error instanceof Error ? error.message : 'No fue posible actualizar la orden.', 'error');
-  }
-});
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : 'No fue posible actualizar las notas.', 'error');
+    }
+  });
 
   const cancelOrderMutation = useMutation({
     mutationFn: () => api.cancelOrder(orderId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
     onSettled: () => {
@@ -324,6 +342,7 @@ export const OrderDetailPage = () => {
 
       if (action === 'notes') {
         await saveNotesMutation.mutateAsync(notes);
+        setNotesEdited(false);
         return;
       }
 
@@ -344,6 +363,7 @@ export const OrderDetailPage = () => {
     onSuccess: async (_result, statusId) => {
       await queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       await queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
 
@@ -414,9 +434,38 @@ export const OrderDetailPage = () => {
             rows={data.payments}
             columns={[
               { key: 'method', header: 'Método', render: (row) => row.paymentMethodName },
-              { key: 'amount', header: 'Monto', render: (row) => currency(row.amount) },
+              {
+                key: 'amount',
+                header: 'Monto',
+                render: (row) => row.isVoided ? `-${currency(row.amount)}` : currency(row.amount)
+              },
               { key: 'reference', header: 'Referencia', render: (row) => row.reference || '—' },
-              { key: 'date', header: 'Fecha', render: (row) => dateTime(row.createdAt) }
+              {
+                key: 'status',
+                header: 'Estado',
+                render: (row) => row.isVoided ? 'Anulado' : 'Activo'
+              },
+              { key: 'date', header: 'Fecha', render: (row) => dateTime(row.createdAt) },
+              {
+                key: 'actions',
+                header: 'Acciones',
+                render: (row) =>
+                  isAdmin && !row.isVoided ? (
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        setSelectedPayment(row);
+                        setVoidPaymentPassword('');
+                        setVoidPaymentReason('');
+                        setVoidPaymentModal(true);
+                      }}
+                    >
+                      Anular
+                    </Button>
+                  ) : (
+                    'â€”'
+                  )
+              }
             ]}
           />
         );
@@ -447,8 +496,21 @@ export const OrderDetailPage = () => {
           <DataTable
             rows={data.deliveries}
             columns={[
+              {
+                key: 'type',
+                header: 'Tipo',
+                render: (row) => row.deliveryType === 'PARTIAL' ? 'Parcial' : 'Completa'
+              },
               { key: 'who', header: 'Recibe', render: (row) => row.deliveredTo },
               { key: 'ticket', header: 'Ticket', render: (row) => row.ticketCode },
+              {
+                key: 'pending',
+                header: 'Pendiente',
+                render: (row) =>
+                  row.pendingDeliveryNotes
+                    ? `Pendiente por entregar: ${row.pendingDeliveryNotes}`
+                    : 'â€”'
+              },
               { key: 'date', header: 'Fecha', render: (row) => dateTime(row.createdAt) }
             ]}
           />
@@ -530,7 +592,10 @@ export const OrderDetailPage = () => {
 
   <textarea
     value={notes}
-    onChange={(e) => setNotes(e.target.value)}
+    onChange={(e) => {
+      setNotesEdited(true);
+      setNotes(e.target.value);
+    }}
     placeholder="Escribe notas de la orden..."
     style={{
       width: '100%',
@@ -609,13 +674,17 @@ export const OrderDetailPage = () => {
           </div>
         );
     }
-  }, [activeTab, data, catalogs, updateStatusMutation, clients, pendingStatusId]);
+  }, [activeTab, data, catalogs, updateStatusMutation, clients, pendingStatusId, isAdmin]);
 
   useEffect(() => {
-  if (data?.notes !== undefined) {
-    setNotes(data.notes ?? '');
-  }
-}, [data?.notes]);
+    // Solo refrescamos el borrador local con el valor del servidor cuando
+    // el usuario aún no ha tocado el campo: si está escribiendo o ya
+    // tiene cambios sin guardar, NO pisamos su edición. Esa pisada era
+    // la causa de que "las notas volvieran a su valor anterior".
+    if (data?.notes !== undefined && !notesEdited) {
+      setNotes(data.notes ?? '');
+    }
+  }, [data?.notes, notesEdited]);
 
   if (!data) return <section className="card-panel">Cargando detalle...</section>;
   const currentStatusCode = String(data.statusCode ?? '').toUpperCase();
@@ -723,8 +792,94 @@ export const OrderDetailPage = () => {
           orderId={data.id}
           catalogs={catalogs}
           balanceDue={data.balanceDue}
+          isSubmitting={paymentMutation.isPending}
           onSubmit={(value) => paymentMutation.mutate(value)}
         />
+      </Modal>
+
+      <Modal
+        open={voidPaymentModal}
+        title="Anular pago"
+        onClose={() => {
+          if (voidPaymentMutation.isPending) return;
+          setVoidPaymentModal(false);
+          setSelectedPayment(null);
+          setVoidPaymentPassword('');
+          setVoidPaymentReason('');
+        }}
+      >
+        <div className="stack-gap">
+          <p className="alert-warning" style={{ marginTop: 0 }}>
+            Esta acción no borra el pago, lo anula y ajusta caja/reportes.
+          </p>
+
+          {selectedPayment ? (
+            <div className="card-panel" style={{ background: '#f8fafc' }}>
+              <div className="detail-row">
+                <span>Método</span>
+                <strong>{selectedPayment.paymentMethodName}</strong>
+              </div>
+              <div className="detail-row">
+                <span>Monto</span>
+                <strong>{currency(selectedPayment.amount)}</strong>
+              </div>
+              <div className="detail-row">
+                <span>Fecha</span>
+                <strong>{dateTime(selectedPayment.createdAt)}</strong>
+              </div>
+            </div>
+          ) : null}
+
+          <label>
+            <span>Contraseña administrativa</span>
+            <Input
+              type="password"
+              value={voidPaymentPassword}
+              disabled={voidPaymentMutation.isPending}
+              onChange={(e) => setVoidPaymentPassword(e.target.value)}
+            />
+          </label>
+
+          <label>
+            <span>Motivo</span>
+            <Input
+              value={voidPaymentReason}
+              disabled={voidPaymentMutation.isPending}
+              onChange={(e) => setVoidPaymentReason(e.target.value)}
+              placeholder="Ej: pago duplicado registrado por error"
+            />
+          </label>
+
+          {voidPaymentMutation.isError && (
+            <p className="error-text">{(voidPaymentMutation.error as Error).message}</p>
+          )}
+
+          <div className="form-actions">
+            <Button
+              variant="secondary"
+              disabled={voidPaymentMutation.isPending}
+              onClick={() => {
+                setVoidPaymentModal(false);
+                setSelectedPayment(null);
+                setVoidPaymentPassword('');
+                setVoidPaymentReason('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              disabled={
+                voidPaymentMutation.isPending ||
+                !voidPaymentPassword.trim() ||
+                voidPaymentReason.trim().length < 5
+              }
+              onClick={() => voidPaymentMutation.mutate()}
+            >
+              {voidPaymentMutation.isPending ? 'Anulando...' : 'Confirmar anulación'}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -755,6 +910,8 @@ export const OrderDetailPage = () => {
           hideInitialPaymentFields
           submitLabel="Guardar cambios"
           onSubmit={(value) => updateOrderMutation.mutate(value)}
+          isSubmitting={updateOrderMutation.isPending}
+          submittingLabel="Guardando cambios..."
         />
         {updateOrderMutation.isError && (
           <p className="error-text">{(updateOrderMutation.error as Error).message}</p>

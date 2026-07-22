@@ -16,6 +16,9 @@ const defaultValues: OrderInput = {
   discountTotal: 0,
   discountReason: null,
   initialPaymentLines: [],
+  isManual: false,
+  manualOrderNumber: null,
+  manualOrderDate: null,
   items: [
     {
       garmentTypeId: null,
@@ -64,6 +67,9 @@ const computeItemTotals = (item: OrderInput['items'][number]) => {
 const hasDecimalQuantities = (items?: Array<{ quantity: number }>) =>
   Boolean(items?.some((item) => !Number.isInteger(Number(item.quantity ?? 0))));
 
+const formatCop = (value: number) =>
+  `$${Number(value || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+
 export const OrderForm = ({
   clients,
   catalogs,
@@ -74,7 +80,9 @@ export const OrderForm = ({
   onDraftChange,
   onDraftRestored,
   hideInitialPaymentFields = false,
-  submitLabel = 'Guardar orden'
+  submitLabel = 'Guardar orden',
+  isSubmitting = false,
+  submittingLabel = 'Guardando orden...'
 }: {
   clients: Client[];
   catalogs: CatalogsPayload | undefined;
@@ -86,7 +94,18 @@ export const OrderForm = ({
   onDraftRestored?: () => void;
   hideInitialPaymentFields?: boolean;
   submitLabel?: string;
+  /** Cuando es true, el botón de guardar se deshabilita y cambia su texto. */
+  isSubmitting?: boolean;
+  submittingLabel?: string;
 }) => {
+  // Guard adicional contra múltiples submits: aunque el padre deshabilite
+  // el botón vía isSubmitting, ese estado tarda un tick de React en
+  // reflejarse. Este ref bloquea cualquier submit disparado mientras uno
+  // anterior sigue en curso (doble clic, Enter repetido, etc.).
+  const submitLockRef = useRef(false);
+  useEffect(() => {
+    if (!isSubmitting) submitLockRef.current = false;
+  }, [isSubmitting]);
   const { data: quantityDecimalsEnabled = false } = useQuery({
     queryKey: ['order-quantity-decimals-enabled'],
     queryFn: api.getOrderQuantityDecimalsEnabled
@@ -120,6 +139,7 @@ export const OrderForm = ({
   const [clientSearch, setClientSearch] = useState('');
   const [searchedClients, setSearchedClients] = useState<Client[]>([]);
   const [searchingClients, setSearchingClients] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const skipNextDraftSyncRef = useRef(Boolean(initialDraft && !initialValue));
   const hasInitializedRef = useRef(false);
 
@@ -140,6 +160,9 @@ export const OrderForm = ({
         discountTotal: Number(initialValue.discountTotal || 0),
         discountReason: initialValue.discountReason || null,
         initialPaymentLines: [],
+        isManual: Boolean(initialValue.isManual),
+        manualOrderNumber: initialValue.manualOrderNumber ?? null,
+        manualOrderDate: initialValue.manualOrderDate ?? null,
         items: initialValue.items.map((item) => ({
           garmentTypeId: item.garmentTypeId,
           serviceId: item.serviceId,
@@ -290,10 +313,13 @@ export const OrderForm = ({
   const watchedItems = useWatch({ control, name: 'items' }) ?? [];
   const watchedInitialPaymentLines = useWatch({ control, name: 'initialPaymentLines' }) ?? [];
   const initialPaymentLines = watchedInitialPaymentLines;
-  const paidAmount = useMemo(
+  const initialPaidAmount = useMemo(
     () => initialPaymentLines.reduce((s, l) => s + Number(l.amount || 0), 0),
     [initialPaymentLines]
   );
+  const registeredPaidAmount = hideInitialPaymentFields
+    ? Number(initialValue?.paidTotal ?? 0)
+    : initialPaidAmount;
 
   // Always-accurate totals computed directly from base fields — no stale state
   const computedItems = useMemo(() => watchedItems.map(computeItemTotals), [watchedItems]);
@@ -310,7 +336,7 @@ export const OrderForm = ({
 
   const total = Math.max(0, computedItems.reduce((s, c) => s + c.itemTotal, 0));
 
-  const balance = Math.max(0, total - paidAmount);
+  const balance = Math.max(0, total - registeredPaidAmount);
 
   const getFilteredServices = (index: number) => {
     const term = String(serviceSearch[index] ?? '').trim().toLowerCase();
@@ -344,16 +370,82 @@ export const OrderForm = ({
     <form
       className="stack-gap"
       onSubmit={handleSubmit((values) => {
+        // Ignora cualquier submit adicional mientras uno anterior sigue
+        // en curso (doble clic, Enter repetido, doble evento de click
+        // del trackpad, etc.). Se libera cuando isSubmitting vuelve a
+        // false (ver useEffect arriba).
+        if (submitLockRef.current || isSubmitting) return;
+        submitLockRef.current = true;
+        setSubmitError(null);
+
         const computedDiscountTotal = values.items.reduce(
           (s, item) => s + Math.max(0, Math.trunc(Number(item.discountAmount || 0))),
           0
         );
+        const submittedItems = values.items.map((item) => {
+          const { itemSubtotal, itemTotal } = computeItemTotals(item);
+          const selectedService = item.serviceId
+            ? catalogs?.services?.find((service) => service.id === item.serviceId)
+            : null;
+          const catalogPrice = selectedService ? Number(selectedService.basePrice ?? 0) : null;
+          const itemUnitPrice = Number(item.unitPrice);
+          const serviceId =
+            hideInitialPaymentFields && catalogPrice !== null && catalogPrice !== itemUnitPrice
+              ? null
+              : item.serviceId;
+
+          return {
+            ...item,
+            color: null,
+            brand: null,
+            sizeReference: null,
+            material: null,
+            receivedCondition: null,
+            workDetail: null,
+            stains: null,
+            damages: null,
+            missingAccessories: null,
+            internalObservations: null,
+            serviceId,
+            quantity: Math.max(0.01, Number(item.quantity || 1)),
+            unitPrice: itemUnitPrice,
+            discountAmount: Math.max(0, Math.trunc(Number(item.discountAmount))),
+            discountReason: item.discountReason || null,
+            surchargeAmount: Math.max(0, Math.trunc(Number(item.surchargeAmount))),
+            surchargeReason: item.surchargeReason || null,
+            subtotal: itemSubtotal,
+            total: itemTotal,
+            customerObservations: item.customerObservations || null
+          };
+        });
+        const submittedTotal = submittedItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+        if (hideInitialPaymentFields && submittedTotal < registeredPaidAmount) {
+          setSubmitError(
+            `El total de la orden no puede ser menor que el valor ya abonado (${formatCop(registeredPaidAmount)}).`
+          );
+          // No se llegó a llamar onSubmit, así que isSubmitting del padre
+          // nunca pasará a true — libera el guard aquí para no bloquear
+          // el próximo intento del usuario.
+          submitLockRef.current = false;
+          return;
+        }
+
+        const manualToggle = Boolean(values.isManual);
+        const manualNum = manualToggle
+          ? (String(values.manualOrderNumber ?? '').trim() || null)
+          : null;
+        const manualDate = manualToggle ? (values.manualOrderDate || null) : null;
+
         onSubmit({
           ...values,
           dueDate: values.dueDate || null,
           notes: values.notes || null,
           discountTotal: computedDiscountTotal,
           discountReason: null,
+          isManual: manualToggle,
+          manualOrderNumber: manualNum,
+          manualOrderDate: manualDate,
           initialPaymentLines: hideInitialPaymentFields
             ? []
             : (values.initialPaymentLines ?? [])
@@ -363,31 +455,7 @@ export const OrderForm = ({
                   amount: Number(l.amount),
                   reference: l.reference || null
                 })),
-          items: values.items.map((item) => {
-            const { itemSubtotal, itemTotal } = computeItemTotals(item);
-            return {
-              ...item,
-              color: null,
-              brand: null,
-              sizeReference: null,
-              material: null,
-              receivedCondition: null,
-              workDetail: null,
-              stains: null,
-              damages: null,
-              missingAccessories: null,
-              internalObservations: null,
-              quantity: Math.max(0.01, Number(item.quantity || 1)),
-              unitPrice: Number(item.unitPrice),
-              discountAmount: Math.max(0, Math.trunc(Number(item.discountAmount))),
-              discountReason: item.discountReason || null,
-              surchargeAmount: Math.max(0, Math.trunc(Number(item.surchargeAmount))),
-              surchargeReason: item.surchargeReason || null,
-              subtotal: itemSubtotal,
-              total: itemTotal,
-              customerObservations: item.customerObservations || null
-            };
-          })
+          items: submittedItems
         });
       })}
     >
@@ -438,6 +506,47 @@ export const OrderForm = ({
             />
             {errors.notes && <small className="error-text">{errors.notes.message}</small>}
           </label>
+        </div>
+      </FormSection>
+
+      <FormSection title="Orden manual / libreta física">
+        <div className="form-grid">
+          <label className="full-span" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              {...register('isManual')}
+              style={{ width: 18, height: 18 }}
+            />
+            <span style={{ fontWeight: 600 }}>
+              Esta orden viene de una factura/libreta física (consecutivo de papel)
+            </span>
+          </label>
+          {watch('isManual') ? (
+            <>
+              <label>
+                <span>Número manual (papel)</span>
+                <Input
+                  placeholder="Ej: 55555"
+                  {...register('manualOrderNumber', {
+                    validate: (value) => {
+                      if (!watch('isManual')) return true;
+                      const trimmed = String(value ?? '').trim();
+                      return trimmed.length > 0 || 'Ingresa el número manual.';
+                    },
+                    maxLength: { value: 50, message: 'Máximo 50 caracteres' }
+                  })}
+                />
+                {errors.manualOrderNumber && (
+                  <small className="error-text">{errors.manualOrderNumber.message}</small>
+                )}
+              </label>
+
+              <label>
+                <span>Fecha de la orden manual</span>
+                <Input type="date" {...register('manualOrderDate')} />
+              </label>
+            </>
+          ) : null}
         </div>
       </FormSection>
 
@@ -689,6 +798,12 @@ export const OrderForm = ({
           <span>Total</span>
           <strong>{currency(total)}</strong>
         </div>
+        {hideInitialPaymentFields ? (
+          <div className="total-box">
+            <span>Abonado</span>
+            <strong>{currency(registeredPaidAmount)}</strong>
+          </div>
+        ) : null}
         <div className="total-box">
           <span>Saldo</span>
           <strong>{currency(balance)}</strong>
@@ -778,15 +893,18 @@ export const OrderForm = ({
             </div>
 
             <div style={{ fontSize: 13, color: '#374151' }}>
-              Total abono: <strong>{currency(paidAmount)}</strong>
-              {' · '}Saldo tras abono: <strong>{currency(Math.max(0, total - paidAmount))}</strong>
+              Total abono: <strong>{currency(initialPaidAmount)}</strong>
+              {' · '}Saldo tras abono: <strong>{currency(Math.max(0, total - initialPaidAmount))}</strong>
             </div>
           </div>
         )}
       </FormSection>
 
       <div className="form-actions">
-        <Button type="submit">{submitLabel}</Button>
+        {submitError ? <p className="error-text">{submitError}</p> : null}
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? submittingLabel : submitLabel}
+        </Button>
       </div>
     </form>
   );

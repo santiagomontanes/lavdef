@@ -4,6 +4,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { sql, type Kysely } from 'kysely';
 import type { Database } from './schema.js';
+import { diagnosticLogger } from '../../main/services/diagnostic-logger.js';
 
 const getMigrationsDir = () => {
   const packagedPath = path.join(process.resourcesPath, 'sql', 'migrations');
@@ -36,6 +37,9 @@ const splitStatements = (content: string) =>
     .map((statement) => statement.trim())
     .filter(Boolean);
 
+const statementIsSafeIfExists = (statement: string) =>
+  SAFE_IF_EXISTS_MARKER.test(statement);
+
 const extractDatabaseName = async (db: Kysely<Database>) => {
   const result = await sql<{ databaseName: string }>`
     SELECT DATABASE() AS databaseName
@@ -62,10 +66,37 @@ const columnExists = async (
   return result.rows.length > 0;
 };
 
+// MySQL "already exists" errors we tolerate as no-ops when re-running an
+// idempotent DDL statement. The migrator deliberately swallows them so a
+// migration file can declare CREATE INDEX / ADD UNIQUE without ad-hoc
+// information_schema gymnastics; if the object is already there we just
+// move on. This is only enabled for statements explicitly tagged with the
+// `-- @safe-if-exists` comment marker on the line directly above, to avoid
+// hiding genuine mistakes in unrelated migrations.
+const SAFE_IF_EXISTS_MARKER = /--\s*@safe-if-exists/i;
+const SAFE_ALREADY_EXISTS_CODES = new Set([
+  'ER_DUP_KEYNAME',     // Duplicate key name (index already exists)
+  'ER_DUP_ENTRY',       // Duplicate entry (when adding UNIQUE on existing data covered separately)
+  'ER_TABLE_EXISTS_ERROR',
+  'ER_MULTIPLE_PRI_KEY'
+]);
+
+const isAlreadyExistsError = (err: unknown) => {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  if (SAFE_ALREADY_EXISTS_CODES.has(code)) return true;
+  const message = String((err as { message?: string } | null)?.message ?? '').toLowerCase();
+  return (
+    message.includes('duplicate key name') ||
+    message.includes('already exists') ||
+    message.includes('multiple primary key')
+  );
+};
+
 const executeStatement = async (
   db: Kysely<Database>,
   databaseName: string,
-  statement: string
+  statement: string,
+  safeIfExists = false
 ) => {
   const trimmed = statement.trim();
 
@@ -103,7 +134,14 @@ const executeStatement = async (
     return;
   }
 
-  await sql.raw(trimmed).execute(db);
+  try {
+    await sql.raw(trimmed).execute(db);
+  } catch (err) {
+    if (safeIfExists && isAlreadyExistsError(err)) {
+      return;
+    }
+    throw err;
+  }
 };
 
 export const runMigrations = async (db: Kysely<Database>) => {
@@ -123,16 +161,42 @@ export const runMigrations = async (db: Kysely<Database>) => {
     .sort();
   const databaseName = await extractDatabaseName(db);
 
+  const pendingFiles = files.filter((file) => !appliedSet.has(file));
+
+  diagnosticLogger.info('migrator', 'Iniciando ciclo de migraciones', {
+    migrationsDir,
+    totalFiles: files.length,
+    appliedCount: appliedSet.size,
+    pendingFiles
+  });
+
   for (const file of files) {
     if (appliedSet.has(file)) continue;
+
+    diagnosticLogger.info('migrator', `Aplicando migración ${file}`);
 
     const content = await fsPromises.readFile(path.join(migrationsDir, file), 'utf8');
     const statements = splitStatements(content);
 
-    for (const statement of statements) {
-      await executeStatement(db, databaseName, statement);
-    }
+    try {
+      for (const statement of statements) {
+        await executeStatement(
+          db,
+          databaseName,
+          statement,
+          statementIsSafeIfExists(statement)
+        );
+      }
 
-    await db.insertInto('schema_migrations').values({ name: file }).execute();
+      await db.insertInto('schema_migrations').values({ name: file }).execute();
+      diagnosticLogger.info('migrator', `Migración ${file} aplicada correctamente`);
+    } catch (err) {
+      diagnosticLogger.error('migrator', `Falló la migración ${file}`, {
+        message: err instanceof Error ? err.message : String(err)
+      });
+      throw err;
+    }
   }
+
+  diagnosticLogger.info('migrator', 'Ciclo de migraciones finalizado');
 };

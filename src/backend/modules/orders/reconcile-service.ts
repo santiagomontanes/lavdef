@@ -1,4 +1,4 @@
-import { sql, type Kysely, type SqlBool } from 'kysely';
+﻿import { sql, type Kysely, type SqlBool } from 'kysely';
 import type { Database } from '../../db/schema.js';
 
 const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
@@ -94,7 +94,7 @@ export const reconcileOrderStates = async (
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst()
   ]);
 
@@ -109,22 +109,17 @@ export const reconcileOrderStates = async (
   const readyId = statusMap.get('READY');
   const readyForDeliveryId = statusMap.get('READY_FOR_DELIVERY');
 
-  // CREATED → IN_PROGRESS after 10 seconds
+  // CREATED → IN_PROGRESS after 10 seconds. Antes se hacía un SELECT y
+  // luego un UPDATE por fila (N+1); ninguna otra parte de esta función
+  // usa la lista de ids afectados, así que un solo UPDATE agrupado
+  // aplica exactamente la misma regla de transición sin el loop.
   if (createdId && inProgressId) {
-    const rows = await db
-      .selectFrom('orders')
-      .select('id')
+    await db
+      .updateTable('orders')
+      .set({ status_id: inProgressId, status_changed_at: sql`NOW()` as unknown as Date })
       .where('status_id', '=', createdId)
       .where(sql<SqlBool>`COALESCE(status_changed_at, created_at) <= NOW() - INTERVAL 10 SECOND`)
       .execute();
-
-    for (const row of rows) {
-      await db
-        .updateTable('orders')
-        .set({ status_id: inProgressId, status_changed_at: sql`NOW()` as unknown as Date })
-        .where('id', '=', row.id)
-        .execute();
-    }
   }
 
   // IN_PROGRESS with due_date arrived → queue for user verification (NOT auto-change to READY)
@@ -151,13 +146,21 @@ export const reconcileOrderStates = async (
       .where(sql<SqlBool>`DATE(orders.due_date) <= DATE(CONVERT_TZ(NOW(), '+00:00', '-05:00'))`)
       .execute();
 
+    // Un solo SELECT para todas las órdenes de hoy en vez de una
+    // consulta "existing" por fila (N+1 cuando dueRows crece).
+    const dueOrderIds = dueRows.map((row) => row.id);
+    const existingQueueRows = dueOrderIds.length
+      ? await db
+          .selectFrom('ready_queue')
+          .select(['id', 'status', 'order_id'])
+          .where('order_id', 'in', dueOrderIds)
+          .where(sql<SqlBool>`DATE(queue_date) = ${todayStr}`)
+          .execute()
+      : [];
+    const existingQueueByOrderId = new Map(existingQueueRows.map((row) => [row.order_id, row]));
+
     for (const row of dueRows) {
-      const existing = await db
-        .selectFrom('ready_queue')
-        .select(['id', 'status'])
-        .where('order_id', '=', row.id)
-        .where(sql<SqlBool>`DATE(queue_date) = ${todayStr}`)
-        .executeTakeFirst();
+      const existing = existingQueueByOrderId.get(row.id);
 
       if (!existing) {
         const insertResult = await db
@@ -212,20 +215,28 @@ export const reconcileOrderStates = async (
         .where(sql<SqlBool>`ready_queue.auto_process_after IS NOT NULL AND ready_queue.auto_process_after <= NOW()`)
         .execute();
 
-      for (const row of expiredRows) {
-        await db
-          .updateTable('orders')
-          .set({ status_id: readyId, status_changed_at: sql`NOW()` as unknown as Date })
-          .where('id', '=', row.id)
-          .execute();
+      // Antes: un UPDATE a `orders` y otro a `ready_queue` por fila
+      // (N+1). Misma regla de transición, agrupada en dos UPDATEs
+      // (uno por tabla) dentro de una transacción.
+      if (expiredRows.length > 0) {
+        const expiredOrderIds = expiredRows.map((row) => row.id);
+        const expiredQueueIds = expiredRows.map((row) => (row as any).queue_id as number);
 
-        await db
-          .updateTable('ready_queue')
-          .set({ status: 'AUTO_PROCESSED' })
-          .where('id', '=', (row as any).queue_id)
-          .execute();
+        await db.transaction().execute(async (trx) => {
+          await trx
+            .updateTable('orders')
+            .set({ status_id: readyId, status_changed_at: sql`NOW()` as unknown as Date })
+            .where('id', 'in', expiredOrderIds)
+            .execute();
 
-        autoProcessedCount++;
+          await trx
+            .updateTable('ready_queue')
+            .set({ status: 'AUTO_PROCESSED' })
+            .where('id', 'in', expiredQueueIds)
+            .execute();
+        });
+
+        autoProcessedCount += expiredRows.length;
       }
     }
   }

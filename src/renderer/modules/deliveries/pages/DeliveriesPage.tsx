@@ -14,6 +14,8 @@ const emptyForm: DeliveryInput = {
   receiverPhone: null,
   relationshipToClient: null,
   receiverSignature: null,
+  deliveryType: 'COMPLETE',
+  pendingDeliveryNotes: null,
   ticketCode: ''
 };
 
@@ -108,8 +110,9 @@ export const DeliveriesPage = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['deliveries'] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
 
-      if (relatedOrder && customerPhone) {
+      if (variables.deliveryType === 'COMPLETE' && relatedOrder && customerPhone) {
         const url = `https://wa.me/${customerPhone}?text=${encodeURIComponent(
           buildDeliveredMessage({
             clientName: relatedOrder.clientName,
@@ -169,10 +172,13 @@ export const DeliveriesPage = () => {
     if (!selected) return 'Debes seleccionar una orden válida.';
     const statusCode = String(selected.statusCode ?? '').toUpperCase();
     const statusName = String(selected.statusName ?? '').toUpperCase();
-    if (!['READY', 'READY_FOR_DELIVERY'].includes(statusCode) && !statusName.includes('LISTO')) {
+    if (
+      !['READY', 'READY_FOR_DELIVERY', 'PARTIAL_DELIVERY'].includes(statusCode) &&
+      !statusName.includes('LISTO')
+    ) {
       return 'La orden no está lista para entrega. Debes cambiar el estado a "LISTO PARA ENTREGAR".';
     }
-    if (Number(selected.balanceDue ?? 0) > 0) {
+    if (form.deliveryType === 'COMPLETE' && Number(selected.balanceDue ?? 0) > 0) {
       return `La orden tiene saldo pendiente (${currency(selected.balanceDue)}). Debes registrar el pago antes de entregarla.`;
     }
     return null;
@@ -200,6 +206,7 @@ export const DeliveriesPage = () => {
         if (['DELIVERED', 'CANCELLED', 'CANCELED', 'CANCELADO'].includes(statusCode)) return false;
         return (
           ['READY', 'READY_FOR_DELIVERY'].includes(statusCode) ||
+          statusCode === 'PARTIAL_DELIVERY' ||
           String(order.statusName).toUpperCase().includes('LISTO')
         );
       })
@@ -349,6 +356,10 @@ export const DeliveriesPage = () => {
   const handleSubmit = () => {
     if (!form.orderId) { setFormError('Debes seleccionar una orden.'); return; }
     if (!form.deliveredTo.trim()) { setFormError('Debes ingresar el nombre de quien recibe.'); return; }
+    if (form.deliveryType === 'PARTIAL' && !String(form.pendingDeliveryNotes ?? '').trim()) {
+      setFormError('Debes indicar qué queda pendiente por entregar.');
+      return;
+    }
     const validationError = validateOrder();
     if (validationError) { setFormError(validationError); return; }
     setFormError(null);
@@ -417,13 +428,14 @@ export const DeliveriesPage = () => {
             </span>
           </div>
           <div className="row-actions">
-            {(['ALL', 'CREATED', 'IN_PROGRESS', 'READY', 'READY_FOR_DELIVERY'] as const).map((code) => {
+            {(['ALL', 'CREATED', 'IN_PROGRESS', 'READY', 'READY_FOR_DELIVERY', 'PARTIAL_DELIVERY'] as const).map((code) => {
               const labels: Record<string, string> = {
                 ALL: 'Todos',
                 CREATED: 'Creada',
                 IN_PROGRESS: 'En proceso',
                 READY: 'Lista',
-                READY_FOR_DELIVERY: 'Lista para entregar'
+                READY_FOR_DELIVERY: 'Lista para entregar',
+                PARTIAL_DELIVERY: 'Entrega parcial'
               };
               return (
                 <Button
@@ -593,7 +605,17 @@ export const DeliveriesPage = () => {
           rows={deliveredTodayRows}
           columns={[
             { key: 'order', header: 'Orden', render: (row) => getOrderDisplay(row.orderId) },
+            {
+              key: 'type',
+              header: 'Tipo',
+              render: (row) => row.deliveryType === 'PARTIAL' ? 'Parcial' : 'Completa'
+            },
             { key: 'who', header: 'Recibe', render: (row) => row.deliveredTo },
+            {
+              key: 'pending',
+              header: 'Pendiente',
+              render: (row) => row.pendingDeliveryNotes ? `Pendiente por entregar: ${row.pendingDeliveryNotes}` : 'â€”'
+            },
             { key: 'date', header: 'Hora', render: (row) => dateTime(row.createdAt) }
           ]}
         />
@@ -678,9 +700,55 @@ export const DeliveriesPage = () => {
             />
           </label>
 
+          <label>
+            <span>Tipo de entrega *</span>
+            <select
+              className="field"
+              value={form.deliveryType}
+              onChange={(e) => {
+                const deliveryType = e.target.value as DeliveryInput['deliveryType'];
+                setForm((prev) => ({
+                  ...prev,
+                  deliveryType,
+                  pendingDeliveryNotes:
+                    deliveryType === 'PARTIAL' ? prev.pendingDeliveryNotes : null
+                }));
+                setFormError(null);
+              }}
+            >
+              <option value="COMPLETE">Entrega completa</option>
+              <option value="PARTIAL">Entrega parcial / incompleta</option>
+            </select>
+          </label>
+
+          {form.deliveryType === 'PARTIAL' ? (
+            <>
+              <p className="alert-warning">
+                La orden quedará marcada como entrega parcial y seguirá pendiente hasta completar la entrega.
+              </p>
+              <label>
+                <span>¿Qué queda pendiente por entregar? *</span>
+                <textarea
+                  className="field"
+                  value={form.pendingDeliveryNotes ?? ''}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pendingDeliveryNotes: e.target.value
+                    }))
+                  }
+                  placeholder="Ej: queda pendiente una chaqueta azul / falta entregar 2 prendas..."
+                  rows={4}
+                />
+              </label>
+            </>
+          ) : null}
+
           <div className="form-actions">
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSubmit}>Confirmar entrega</Button>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={mutation.isPending}>Cancelar</Button>
+            <Button onClick={handleSubmit} disabled={mutation.isPending}>
+              {mutation.isPending ? 'Registrando...' : 'Confirmar entrega'}
+            </Button>
           </div>
 
           {formError && <p className="error-text">{formError}</p>}

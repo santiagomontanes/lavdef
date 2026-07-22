@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 import { sql, type Kysely } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type { Expense, ExpenseInput } from '../../../shared/types.js';
@@ -68,7 +68,7 @@ export const createExpensesService = (db: Kysely<Database>) => {
       sql<string>`c.name`.as('category_name'),
       sql<string | null>`pm.name`.as('payment_method_name')
     ])
-    .orderBy('e.id desc')
+    .orderBy('e.id', 'desc')
     .execute();
 
   return rows.map(mapExpense);
@@ -83,7 +83,7 @@ export const createExpensesService = (db: Kysely<Database>) => {
       .selectFrom('cash_sessions')
       .select(['id', 'opened_at', 'opening_amount'])
       .where('status', '=', 'open')
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!activeCashSession) {
@@ -109,6 +109,7 @@ export const createExpensesService = (db: Kysely<Database>) => {
           .selectFrom('payments')
           .select((eb) => eb.fn.sum<number>('amount').as('sum'))
           .where('payment_method_id', '=', parsed.paymentMethodId)
+          .where(sql<boolean>`COALESCE(status, 'ACTIVE') <> 'VOIDED'`)
           .where('created_at', '>=', sessionStart)
           .executeTakeFirst();
 

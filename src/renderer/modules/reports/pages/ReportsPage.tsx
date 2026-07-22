@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@renderer/services/api';
 import { Button, DataTable, Input, PageHeader, SummaryCard } from '@renderer/ui/components';
 import { currency } from '@renderer/utils/format';
@@ -153,6 +154,7 @@ const ReportSection = ({
         <SummaryCard title="Devoluciones" value={currency(data?.totalPaymentOut ?? 0)} accent="#af5a5a" />
         <SummaryCard title="Utilidad" value={currency(data?.netUtility ?? 0)} accent="#5a7cff" />
         <SummaryCard title="Pagos" value={currency(data?.totalPayments ?? 0)} accent="#d89d4f" />
+        <SummaryCard title="Pagos anulados" value={currency(data?.totalVoidedPayments ?? 0)} accent="#64748b" />
       </div>
       <div className="summary-grid">
         <SummaryCard title="Órdenes" value={String(data?.totalOrders ?? 0)} accent="#6786a8" />
@@ -190,6 +192,19 @@ const ReportSection = ({
             ]}
           />
         </div>
+        {(data?.voidedPaymentMethods?.length ?? 0) > 0 ? (
+          <div className="card-panel">
+            <h3>Pagos anulados</h3>
+            <DataTable
+              rows={data?.voidedPaymentMethods ?? []}
+              columns={[
+                { key: 'method', header: 'Método', render: (row) => row.methodName },
+                { key: 'count', header: 'Cantidad', render: (row) => row.count },
+                { key: 'amount', header: 'Monto', render: (row) => currency(row.amount) }
+              ]}
+            />
+          </div>
+        ) : null}
         <div className="card-panel">
           <h3>Gastos por método</h3>
           <DataTable
@@ -247,6 +262,7 @@ const ReportSection = ({
 };
 
 export const ReportsPage = () => {
+  const navigate = useNavigate();
   const [from, setFrom] = useState(todayKey);
   const [to, setTo] = useState(todayKey);
   const [appliedFrom, setAppliedFrom] = useState(todayKey);
@@ -364,6 +380,27 @@ export const ReportsPage = () => {
                 onClick={() => printThermal('Reporte completo', customQuery.data)}
               >
                 Imprimir Todo
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  navigate(
+                    `/reportes/inventario-general?from=${encodeURIComponent(appliedFrom)}&to=${encodeURIComponent(appliedTo)}`
+                  )
+                }
+              >
+                Inventario general
+              </Button>
+              <Button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/arqueo/imprimir?from=${encodeURIComponent(appliedFrom)}&to=${encodeURIComponent(appliedTo)}`
+                  )
+                }
+              >
+                Imprimir arqueo
               </Button>
             </div>
           }

@@ -16,8 +16,13 @@ import {
   getCurrentSessionUserId,
   getCurrentSessionUserName
 } from '../../../main/services/session-context.js';
+import { diagnosticLogger } from '../../../main/services/diagnostic-logger.js';
+import type { OrdersListParams, OrdersListPageResult } from '../../../shared/types.js';
 
 const TERMINAL_STATES = new Set(['CANCELLED', 'CANCELED', 'CANCELADO']);
+
+const formatCop = (value: number) =>
+  `$${Number(value || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 
 const orderItemSchema = z.object({
   garmentTypeId: z.number().nullable(),
@@ -57,7 +62,11 @@ const orderSchema = z.object({
   discountTotal: z.number().nonnegative(),
   discountReason: z.string().nullable().optional(),
   initialPaymentLines: z.array(paymentLineSchema).default([]),
-  items: z.array(orderItemSchema).min(1)
+  items: z.array(orderItemSchema).min(1),
+  isManual: z.boolean().optional().default(false),
+  manualOrderNumber: z.string().trim().min(1).max(50).nullable().optional(),
+  manualOrderDate: z.string().nullable().optional(),
+  idempotencyKey: z.string().trim().min(8).max(140).nullable().optional()
 });
 
 const mapOrder = (row: any): Order => ({
@@ -77,7 +86,12 @@ const mapOrder = (row: any): Order => ({
   paidTotal: Number(row.paid_total),
   balanceDue: Number(row.balance_due),
   dueDate: row.due_date ? new Date(row.due_date).toISOString() : null,
-  createdAt: new Date(row.created_at).toISOString()
+  createdAt: new Date(row.created_at).toISOString(),
+  isManual: Boolean(row.is_manual),
+  manualOrderNumber: row.manual_order_number ?? null,
+  manualOrderDate: row.manual_order_date
+    ? new Date(row.manual_order_date).toISOString().slice(0, 10)
+    : null
 });
 
 export const createOrdersService = (db: Kysely<Database>) => {
@@ -177,9 +191,57 @@ export const createOrdersService = (db: Kysely<Database>) => {
     };
   };
 
+  const isDuplicateIdempotencyKeyError = (err: unknown) => {
+    const code = (err as { code?: string } | null)?.code ?? '';
+    if (code !== 'ER_DUP_ENTRY') return false;
+    const message = String((err as { message?: string } | null)?.message ?? '');
+    return /uk_orders_idempotency_key|orders\.idempotency_key|for key 'idempotency_key'/i.test(message);
+  };
+
   const create = async (input: OrderInput): Promise<OrderDetail> => {
     const parsed = orderSchema.parse(input);
+    const idempotencyKey = parsed.idempotencyKey?.trim() || null;
+
+    if (idempotencyKey) {
+      diagnosticLogger.info('orders.create', 'idempotencyKey recibido', { idempotencyKey });
+
+      const existingByKey = await repository.findByIdempotencyKey(idempotencyKey);
+      if (existingByKey) {
+        diagnosticLogger.info('orders.create', 'Orden reutilizada por idempotencyKey (evita duplicado por doble envío)', {
+          idempotencyKey,
+          orderId: existingByKey.id,
+          orderNumber: existingByKey.order_number
+        });
+        return detail(existingByKey.id);
+      }
+    }
+
     const normalizedItems = await normalizeItems(parsed.items);
+
+    const isManual = Boolean(parsed.isManual);
+    const manualOrderNumber = isManual
+      ? String(parsed.manualOrderNumber ?? '').trim() || null
+      : null;
+    const manualOrderDate = isManual
+      ? (parsed.manualOrderDate?.trim() || null)
+      : null;
+
+    if (isManual && !manualOrderNumber) {
+      throw new Error('Debes ingresar el número manual de la orden física.');
+    }
+
+    if (manualOrderNumber) {
+      const existingManual = await db
+        .selectFrom('orders')
+        .select(['id', 'order_number'])
+        .where('manual_order_number', '=', manualOrderNumber)
+        .executeTakeFirst();
+      if (existingManual) {
+        throw new Error(
+          `La orden manual #${manualOrderNumber} ya está registrada en el sistema (orden interna ${existingManual.order_number}).`
+        );
+      }
+    }
 
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.subtotal, 0);
     const itemsTotal = normalizedItems.reduce((sum, item) => sum + item.total, 0);
@@ -246,7 +308,11 @@ export const createOrdersService = (db: Kysely<Database>) => {
           due_date: parsed.dueDate ? sql`${parsed.dueDate}` as unknown as Date : null,
           status_changed_at: sql`NOW()` as unknown as Date,
           whatsapp_created_sent: 0,
-          whatsapp_ready_sent: 0
+          whatsapp_ready_sent: 0,
+          is_manual: isManual ? 1 : 0,
+          manual_order_number: manualOrderNumber,
+          manual_order_date: manualOrderDate ? (sql`${manualOrderDate}` as unknown as Date) : null,
+          idempotency_key: idempotencyKey
         })
         .executeTakeFirstOrThrow();
 
@@ -315,11 +381,31 @@ export const createOrdersService = (db: Kysely<Database>) => {
     }; // end doInsert
 
     // Retry up to 3 times on duplicate order_number (failsafe for edge cases)
+    let reusedExistingId: number | null = null;
+
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await doInsert();
         break;
       } catch (err: any) {
+        // Carrera: dos envíos con la misma idempotencyKey llegaron casi
+        // al mismo tiempo. El otro ya insertó la orden — la recuperamos
+        // y no reintentamos el insert (reintentar chocaría de nuevo con
+        // la misma llave). No se crean pagos duplicados para este caso:
+        // el envío que sí ganó la carrera ya registró su propio abono.
+        if (idempotencyKey && isDuplicateIdempotencyKeyError(err)) {
+          const winner = await repository.findByIdempotencyKey(idempotencyKey);
+          if (winner) {
+            diagnosticLogger.info('orders.create', 'Orden reutilizada tras carrera de idempotencyKey', {
+              idempotencyKey,
+              orderId: winner.id,
+              orderNumber: winner.order_number
+            });
+            reusedExistingId = winner.id;
+            break;
+          }
+        }
+
         const isDuplicate =
           err?.code === 'ER_DUP_ENTRY' ||
           String(err?.message ?? '').includes('Duplicate entry') ||
@@ -328,6 +414,16 @@ export const createOrdersService = (db: Kysely<Database>) => {
         throw err;
       }
     }
+
+    if (reusedExistingId) {
+      return detail(reusedExistingId);
+    }
+
+    diagnosticLogger.info('orders.create', 'Orden creada', {
+      orderId,
+      orderNumber,
+      idempotencyKey
+    });
 
     if (paidTotal > 0 && initialLines.length > 0) {
       await paymentsService.createBatch({
@@ -371,7 +467,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
     const paidTotal = Number(existingOrder.paid_total ?? 0);
 
     if (paidTotal > total) {
-      throw new Error('El nuevo total no puede ser menor que lo ya abonado.');
+      throw new Error(`El total de la orden no puede ser menor que el valor ya abonado (${formatCop(paidTotal)}).`);
     }
 
     const balanceDue = Math.max(0, total - paidTotal);
@@ -517,6 +613,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
         sql<string>`pm.name`.as('payment_method_name')
       ])
       .where('p.order_id', '=', orderId)
+      .where(sql<boolean>`COALESCE(p.status, 'ACTIVE') <> 'VOIDED'`)
       .execute();
 
     const totalPaid = orderPayments.reduce((s, p) => s + Number(p.amount), 0);
@@ -748,7 +845,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
     const activeStatuses = await db
       .selectFrom('order_statuses')
       .select(['id', 'code', 'name', 'color'])
-      .where('code', 'in', ['CREATED', 'IN_PROGRESS', 'READY', 'READY_FOR_DELIVERY'])
+      .where('code', 'in', ['CREATED', 'IN_PROGRESS', 'READY', 'READY_FOR_DELIVERY', 'PARTIAL_DELIVERY'])
       .execute();
 
     const activeStatusIds = activeStatuses.map((s) => Number(s.id));
@@ -769,7 +866,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
         sql<string>`s.color`.as('status_color')
       ])
       .where('o.status_id', 'in', activeStatusIds)
-      .orderBy('o.id desc')
+      .orderBy('o.id', 'desc')
       .execute();
 
     const orderIds = rows.map((r) => r.id);
@@ -834,6 +931,9 @@ export const createOrdersService = (db: Kysely<Database>) => {
           'o.balance_due',
           'o.due_date',
           'o.created_at',
+          'o.is_manual',
+          'o.manual_order_number',
+          'o.manual_order_date',
           sql<string>`CONCAT(c.first_name, ' ', c.last_name)`.as('client_name'),
           sql<string>`s.code`.as('status_code'),
           sql<string>`s.name`.as('status_name'),
@@ -842,10 +942,12 @@ export const createOrdersService = (db: Kysely<Database>) => {
         .where((eb) =>
           eb.or([
             eb('o.order_number', 'like', likeTerm),
+            eb('o.manual_order_number', '=', normalized),
+            eb('o.manual_order_number', 'like', likeTerm),
             sql<boolean>`CONCAT(c.first_name, ' ', c.last_name) LIKE ${likeTerm}`
           ])
         )
-        .orderBy('o.id desc')
+        .orderBy('o.id', 'desc')
         .limit(safeLimit)
         .execute();
 
@@ -877,6 +979,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
         db
           .selectFrom('payments')
           .select((eb) => eb.fn.sum<number>('amount').as('sum'))
+          .where(sql<boolean>`COALESCE(status, 'ACTIVE') <> 'VOIDED'`)
           .where('created_at', '>=', new Date(new Date().toDateString()))
           .executeTakeFirst(),
 
@@ -907,6 +1010,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
             sql<string>`pm.name`.as('method_name'),
             (eb) => eb.fn.sum<number>('p.amount').as('amount')
           ])
+          .where(sql<boolean>`COALESCE(p.status, 'ACTIVE') <> 'VOIDED'`)
           .where('p.created_at', '>=', new Date(new Date().toDateString()))
           .groupBy('pm.name')
           .execute()
@@ -968,6 +1072,51 @@ export const createOrdersService = (db: Kysely<Database>) => {
 
     async list(): Promise<Order[]> {
       return (await repository.list()).map(mapOrder);
+    },
+
+    // Listado paginado real (LIMIT/OFFSET en SQL). `list()` de arriba se
+    // conserva sin cambios para los consumidores que siguen necesitando
+    // el arreglo completo (selects de Whatsapp/Garantías/Entregas).
+    async listPage(params: OrdersListParams): Promise<OrdersListPageResult> {
+      const page = Math.max(1, Math.trunc(Number(params.page) || 1));
+      const pageSize = Math.max(1, Math.min(100, Math.trunc(Number(params.pageSize) || 20)));
+      const status =
+        params.status != null && params.status !== 'ALL' ? Number(params.status) : null;
+      const search = params.search ?? null;
+
+      const startedAt = Date.now();
+      const { rows, total } = await repository.listPage({
+        status,
+        search,
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+      });
+      const durationMs = Date.now() - startedAt;
+
+      diagnosticLogger.info('orders.listPage', 'Consulta de listado paginado', {
+        page,
+        pageSize,
+        status,
+        search,
+        returned: rows.length,
+        total,
+        durationMs
+      });
+
+      if (durationMs > 500) {
+        diagnosticLogger.warn('orders.listPage', 'Consulta de listado paginado lenta', {
+          page,
+          pageSize,
+          durationMs
+        });
+      }
+
+      return {
+        rows: rows.map(mapOrder),
+        total,
+        page,
+        pageSize
+      };
     },
 
     detail,

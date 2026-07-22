@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '@renderer/services/api';
 import { Button, PageHeader } from '@renderer/ui/components';
@@ -39,14 +39,20 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
 
   const [runningPdfAction, setRunningPdfAction] = useState(false);
+  const [printMode, setPrintMode] = useState<'both' | 'customer' | 'internal'>('both');
   const autoSavedRef = useRef(false);
   const autoPrintedRef = useRef(false);
+
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesEdited, setNotesEdited] = useState(false);
 
   const shouldAutoPrint = searchParams.get('autoPrint') === '1';
   const shouldAutoSave = searchParams.get('autoSave') !== '0';
   const numericOrderId = Number(orderId);
+  const invoiceQueryKey = ['invoice-from-order', numericOrderId] as const;
 
   const { data: pdfOutputDir } = useQuery({
     queryKey: ['pdf-output-dir'],
@@ -59,17 +65,64 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     }
   });
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['invoice-from-order', orderId],
+  // createFromOrder es idempotente: si la factura ya existe, refresca el
+  // snapshot desde order_items para evitar mostrar observaciones antiguas.
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    error
+  } = useQuery({
+    queryKey: invoiceQueryKey,
     queryFn: async () => api.createInvoiceFromOrder(numericOrderId),
     enabled: Number.isFinite(numericOrderId) && numericOrderId > 0,
-    retry: 0
+    retry: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+
+  const { data: showBarcode = true } = useQuery({
+    queryKey: ['invoice-show-barcode-enabled'],
+    queryFn: api.getInvoiceShowBarcodeEnabled,
+    staleTime: 5 * 60 * 1000
   });
 
   const barcodeValue = useMemo(
     () => normalizeBarcode(data?.orderNumber || data?.ticketCode || data?.orderId),
     [data?.orderNumber, data?.ticketCode, data?.orderId]
   );
+
+  // El draft local se inicializa con las notas del servidor SOLO la
+  // primera vez que llegan datos o cuando el usuario aún no ha tocado el
+  // campo. Si el usuario ya editó, el refetch no debe sobreescribirlo.
+  useEffect(() => {
+    if (!data) return;
+    if (notesEdited) return;
+    setNotesDraft(data.notes ?? '');
+  }, [data, notesEdited]);
+
+  const notesMutation = useMutation({
+    mutationFn: async (value: string) => {
+      return api.updateInvoiceNotes(numericOrderId, value.trim().length > 0 ? value : null);
+    },
+    onSuccess: async (result) => {
+      // Reflejamos el valor confirmado en caché sin disparar refetch para
+      // evitar que un createFromOrder accidental pise la factura impresa.
+      queryClient.setQueryData(invoiceQueryKey, (prev: any) =>
+        prev ? { ...prev, notes: result.notes } : prev
+      );
+      queryClient.invalidateQueries({ queryKey: ['order-detail', numericOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      setNotesEdited(false);
+      showToast('Notas guardadas correctamente.', 'success');
+    },
+    onError: (err: Error) => {
+      showToast(err.message || 'No fue posible guardar las notas.', 'error');
+    }
+  });
 
   const normalizedPhone = String(data?.clientPhone ?? '').replace(/\D/g, '');
   const saveSubfolder = `Facturas generadas/${localDateKey(new Date())}`;
@@ -124,6 +177,13 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     }
   };
 
+  const handlePrintMode = async (mode: 'both' | 'customer' | 'internal') => {
+    setPrintMode(mode);
+    // Esperar a que React aplique la className antes de imprimir.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await handlePrint();
+  };
+
   const handleWhatsapp = async () => {
     if (!data) return;
     if (!normalizedPhone) {
@@ -137,16 +197,16 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
   };
 
   useEffect(() => {
-    if (!data || !shouldAutoSave || shouldAutoPrint || autoSavedRef.current) return;
+    if (!data || isFetching || !shouldAutoSave || shouldAutoPrint || autoSavedRef.current) return;
     autoSavedRef.current = true;
 
     void generatePdf().catch((saveError) => {
       console.error('No fue posible autoguardar la factura en PDF:', saveError);
     });
-  }, [data, shouldAutoSave, shouldAutoPrint, pdfOutputDir]);
+  }, [data, isFetching, shouldAutoSave, shouldAutoPrint, pdfOutputDir]);
 
   useEffect(() => {
-    if (!data || !shouldAutoPrint || autoPrintedRef.current) return;
+    if (!data || isFetching || !shouldAutoPrint || autoPrintedRef.current) return;
     autoPrintedRef.current = true;
 
     let cancelled = false;
@@ -167,7 +227,7 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     return () => {
       cancelled = true;
     };
-  }, [data, shouldAutoPrint, pdfOutputDir]);
+  }, [data, isFetching, shouldAutoPrint, pdfOutputDir]);
 
   if (isLoading) {
     return <div className="card-panel">Cargando factura...</div>;
@@ -184,7 +244,7 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
   }
 
   return (
-    <section className="stack-gap invoice-page">
+    <section className={`stack-gap invoice-page invoice-mode-${printMode}`}>
       <div className="no-print">
         <PageHeader
           title={`Factura ${data.invoiceNumber}`}
@@ -204,15 +264,95 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
               >
                 {runningPdfAction ? 'Generando PDF...' : 'Guardar PDF'}
               </Button>
-              <Button onClick={handlePrint} disabled={runningPdfAction}>
-                {runningPdfAction ? 'Preparando impresión...' : 'Imprimir'}
+              <Button
+                variant="secondary"
+                onClick={() => handlePrintMode('customer')}
+                disabled={runningPdfAction}
+              >
+                Solo cliente
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handlePrintMode('internal')}
+                disabled={runningPdfAction}
+              >
+                Solo negocio
+              </Button>
+              <Button onClick={() => handlePrintMode('both')} disabled={runningPdfAction}>
+                {runningPdfAction ? 'Preparando impresión...' : 'Imprimir ambas'}
               </Button>
             </div>
           }
         />
+
+        <div
+          className="card-panel"
+          style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          <strong style={{ fontSize: 14 }}>Notas de la factura</strong>
+          <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
+            Aparecen como "Notas generales" en la impresión térmica. El guardado es manual:
+            escribe y pulsa "Guardar notas" cuando termines.
+          </p>
+          <textarea
+            value={notesDraft}
+            onChange={(e) => {
+              setNotesEdited(true);
+              setNotesDraft(e.target.value);
+            }}
+            placeholder="Escribe aquí las notas que aparecerán en la factura impresa..."
+            rows={3}
+            maxLength={1000}
+            style={{
+              width: '100%',
+              padding: 8,
+              fontSize: 13,
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              resize: 'vertical',
+              fontFamily: 'inherit'
+            }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              justifyContent: 'flex-end'
+            }}
+          >
+            {notesEdited && !notesMutation.isPending ? (
+              <span style={{ fontSize: 12, color: '#b45309' }}>
+                Cambios sin guardar
+              </span>
+            ) : null}
+            {notesMutation.isPending ? (
+              <span style={{ fontSize: 12, color: '#2563eb' }}>Guardando...</span>
+            ) : null}
+            {notesMutation.isSuccess && !notesEdited ? (
+              <span style={{ fontSize: 12, color: '#16a34a' }}>Guardado correctamente</span>
+            ) : null}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setNotesEdited(false);
+                setNotesDraft(data.notes ?? '');
+              }}
+              disabled={!notesEdited || notesMutation.isPending}
+            >
+              Descartar cambios
+            </Button>
+            <Button
+              onClick={() => notesMutation.mutate(notesDraft)}
+              disabled={!notesEdited || notesMutation.isPending}
+            >
+              Guardar notas
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="thermal-invoice">
+      <div className="thermal-invoice customer-copy">
         <div className="thermal-header">
           {data.companyLogo ? (
             <img
@@ -230,13 +370,30 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           {data.companyEmail ? <p>{data.companyEmail}</p> : null}
         </div>
 
+        <div className="thermal-copy-badge">
+          <div className="thermal-copy-title">RECIBO / FACTURA DE SERVICIO</div>
+          <div className="thermal-copy-tag">[COPIA CLIENTE]</div>
+        </div>
+
         <div className="thermal-divider" />
 
         <div className="thermal-section">
           <div className="thermal-order-row">
-            <h3>Orden:</h3>
+            <h3>{data.isManual ? 'Orden sistema:' : 'Orden:'}</h3>
             <div className="thermal-order-number">{data.orderNumber}</div>
           </div>
+          {data.isManual && data.manualOrderNumber ? (
+            <p>
+              <strong>Orden manual:</strong>{' '}
+              <span className="thermal-manual-number">{data.manualOrderNumber}</span>
+            </p>
+          ) : null}
+          {data.isManual && data.manualOrderDate ? (
+            <p>
+              <strong>Fecha manual:</strong> {renderDateOnly(data.manualOrderDate)}
+            </p>
+          ) : null}
+          <p><strong>Factura:</strong> {data.invoiceNumber}</p>
           <p><strong>Fecha:</strong> {dateTime(data.createdAt)}</p>
           <p><strong>Fecha promesa:</strong> {renderDateOnly(data.dueDate)}</p>
           <p><strong>Estado:</strong> {Number(data.balanceDue) > 0 ? 'Con saldo' : 'Pagada'}</p>
@@ -247,20 +404,29 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
 
         <div className="thermal-section">
           <h3>Cliente</h3>
-          <p><strong>Nombre:</strong> {data.clientName}</p>
+          {data.clientCode ? <p><strong>Código:</strong> {data.clientCode}</p> : null}
+          <p>
+            <strong>Cliente:</strong>{' '}
+            <strong className="thermal-client-name">{data.clientName}</strong>
+          </p>
           <p><strong>Teléfono:</strong> {renderValue(data.clientPhone)}</p>
+          {data.clientAddress ? <p><strong>Dirección:</strong> {data.clientAddress}</p> : null}
           {data.notes ? <p><strong>Notas generales:</strong> {data.notes}</p> : null}
         </div>
 
         <div className="thermal-divider" />
 
-        <div className="thermal-barcode">
-          <p><strong>Código de barras</strong></p>
-          <Barcode value={barcodeValue} height={64} width={2} displayValue={false} />
-          <div className="thermal-barcode-text">{barcodeValue}</div>
-        </div>
+        {showBarcode && (
+          <>
+            <div className="thermal-barcode">
+              <p><strong>Código de barras</strong></p>
+              <Barcode value={barcodeValue} height={64} width={2} displayValue={false} />
+              <div className="thermal-barcode-text">{barcodeValue}</div>
+            </div>
 
-        <div className="thermal-divider" />
+            <div className="thermal-divider" />
+          </>
+        )}
 
         <div className="thermal-section">
           <h3>Notas por ítem</h3>
@@ -302,6 +468,46 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           <div><span>Saldo</span><strong>{currency(data.balanceDue)}</strong></div>
         </div>
 
+        {data.payments && data.payments.length > 0 ? (
+          <>
+            <div className="thermal-divider" />
+            <div className="thermal-section">
+              <h3>Pagos recibidos</h3>
+              {data.payments.map((p) => (
+                <div key={p.id} className="thermal-item">
+                  <div className="thermal-item-row thermal-item-title">
+                    <span>{renderDateOnly(p.createdAt)} · {p.methodName}</span>
+                    <strong>{currency(p.amount)}</strong>
+                  </div>
+                  {p.reference ? (
+                    <div className="thermal-item-row">
+                      <span>Ref: {p.reference}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <p>
+                <strong>Estado de pago:</strong>{' '}
+                {Number(data.balanceDue) <= 0
+                  ? 'PAGADA'
+                  : Number(data.paidTotal) > 0
+                    ? 'PARCIAL'
+                    : 'PENDIENTE'}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="thermal-divider" />
+            <div className="thermal-section">
+              <p>
+                <strong>Estado de pago:</strong>{' '}
+                {Number(data.balanceDue) <= 0 ? 'PAGADA' : 'PENDIENTE'}
+              </p>
+            </div>
+          </>
+        )}
+
         {data.activeOrders.length > 0 ? (
           <>
             <div className="thermal-divider" />
@@ -332,10 +538,201 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
 
         <div className="thermal-divider" />
 
+        <div className="thermal-section thermal-centered thermal-thanks">
+          <p><strong>Gracias por confiar en {renderValue(data.companyName)}.</strong></p>
+          <p>Conserve este comprobante para reclamar su pedido.</p>
+        </div>
+
+        <div className="thermal-divider" />
+
         <div className="thermal-section">
           <h3>Políticas</h3>
           <p>{data.companyPolicies || 'No hay políticas configuradas.'}</p>
           <p className="thermal-muted thermal-centered">Generada con LavaSuite, software desarrollado por SisteTecni.</p>
+        </div>
+      </div>
+
+      <div className="thermal-invoice internal-copy">
+        <div className="thermal-header">
+          {data.companyLogo ? (
+            <img
+              src={data.companyLogo}
+              alt="Logo del negocio"
+              className="thermal-logo"
+            />
+          ) : null}
+
+          <h2>{renderValue(data.companyName)}</h2>
+          {data.companyNit ? <p>NIT: {data.companyNit}</p> : null}
+        </div>
+
+        <div className="thermal-copy-badge thermal-internal-badge">
+          <div className="thermal-copy-title">COPIA INTERNA DEL NEGOCIO</div>
+          <div className="thermal-copy-tag">[NO ENTREGAR AL CLIENTE]</div>
+        </div>
+
+        <div className="thermal-divider" />
+
+        <div className="thermal-section">
+          <div className="thermal-order-row">
+            <h3>{data.isManual ? 'Orden sistema:' : 'Orden:'}</h3>
+            <div className="thermal-order-number">{data.orderNumber}</div>
+          </div>
+          {data.isManual && data.manualOrderNumber ? (
+            <p>
+              <strong>Orden manual:</strong>{' '}
+              <span className="thermal-manual-number">{data.manualOrderNumber}</span>
+            </p>
+          ) : null}
+          {data.isManual && data.manualOrderDate ? (
+            <p>
+              <strong>Fecha manual:</strong> {renderDateOnly(data.manualOrderDate)}
+            </p>
+          ) : null}
+          <p><strong>Factura:</strong> {data.invoiceNumber}</p>
+          <p><strong>Fecha registro:</strong> {dateTime(data.createdAt)}</p>
+          <p><strong>Fecha promesa:</strong> {renderDateOnly(data.dueDate)}</p>
+          <p><strong>Registró:</strong> {renderValue(data.generatedBy || user.displayName || user.username)}</p>
+        </div>
+
+        <div className="thermal-divider" />
+
+        <div className="thermal-section">
+          <h3>Cliente</h3>
+          {data.clientCode ? <p><strong>Código:</strong> {data.clientCode}</p> : null}
+          <p>
+            <strong>Cliente:</strong>{' '}
+            <strong className="thermal-client-name">{data.clientName}</strong>
+          </p>
+          <p><strong>Teléfono:</strong> {renderValue(data.clientPhone)}</p>
+          {data.clientAddress ? <p><strong>Dirección:</strong> {data.clientAddress}</p> : null}
+        </div>
+
+        <div className="thermal-divider" />
+
+        {showBarcode && (
+          <>
+            <div className="thermal-barcode">
+              <p><strong>Código de barras</strong></p>
+              <Barcode value={barcodeValue} height={64} width={2} displayValue={false} />
+              <div className="thermal-barcode-text">{barcodeValue}</div>
+            </div>
+
+            <div className="thermal-divider" />
+          </>
+        )}
+
+        <div className="thermal-section">
+          <h3>Detalle interno</h3>
+          {data.items.map((item, index) => (
+            <div key={item.id} className="thermal-item">
+              <div className="thermal-item-row thermal-item-title">
+                <span>{index + 1}. {item.description}</span>
+                <strong>{currency(item.total)}</strong>
+              </div>
+              <div className="thermal-item-row">
+                <span>Cant: {item.quantity}</span>
+                <span>Unit: {currency(item.unitPrice)}</span>
+              </div>
+              {(Number(item.discountAmount ?? 0) > 0 || Number(item.surchargeAmount ?? 0) > 0) ? (
+                <div className="thermal-item-row">
+                  <span>Desc: {currency(item.discountAmount)}</span>
+                  <span>Rec: {currency(item.surchargeAmount)}</span>
+                </div>
+              ) : null}
+              {String(item.customerObservations ?? '').trim() ? (
+                <p className="thermal-item-note">
+                  <strong>Obs cliente:</strong> {item.customerObservations}
+                </p>
+              ) : null}
+              {String(item.internalObservations ?? '').trim() ? (
+                <p className="thermal-item-note thermal-internal-note">
+                  <strong>Obs interna:</strong> {item.internalObservations}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <div className="thermal-divider" />
+
+        <div className="thermal-section">
+          <h3>Estado</h3>
+          <p><strong>Estado orden:</strong> {renderValue(data.statusName ?? data.statusCode)}</p>
+          <p>
+            <strong>Estado pago:</strong>{' '}
+            {Number(data.balanceDue) <= 0
+              ? 'PAGADA'
+              : Number(data.paidTotal) > 0
+                ? 'PARCIAL'
+                : 'PENDIENTE'}
+          </p>
+        </div>
+
+        <div className="thermal-divider" />
+
+        <div className="thermal-totals">
+          <div><span>Subtotal</span><strong>{currency(data.subtotal)}</strong></div>
+          <div><span>Total</span><strong>{currency(data.total)}</strong></div>
+          <div><span>Abonado</span><strong>{currency(data.paidTotal)}</strong></div>
+          <div><span>Saldo</span><strong>{currency(data.balanceDue)}</strong></div>
+        </div>
+
+        {data.payments && data.payments.length > 0 ? (
+          <>
+            <div className="thermal-divider" />
+            <div className="thermal-section">
+              <h3>Pagos detallados</h3>
+              {data.payments.map((p) => (
+                <div key={p.id} className="thermal-item">
+                  <div className="thermal-item-row thermal-item-title">
+                    <span>{dateTime(p.createdAt)}</span>
+                    <strong>{currency(p.amount)}</strong>
+                  </div>
+                  <div className="thermal-item-row">
+                    <span>Método: {p.methodName}</span>
+                  </div>
+                  {p.receivedBy ? (
+                    <div className="thermal-item-row">
+                      <span>Recibió: {p.receivedBy}</span>
+                    </div>
+                  ) : null}
+                  {p.reference ? (
+                    <div className="thermal-item-row">
+                      <span>Ref: {p.reference}</span>
+                    </div>
+                  ) : null}
+                  {p.notes ? (
+                    <p className="thermal-item-note">
+                      <strong>Notas:</strong> {p.notes}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+
+        {data.notes ? (
+          <>
+            <div className="thermal-divider" />
+            <div className="thermal-section">
+              <h3>Observaciones de la orden</h3>
+              <p>{data.notes}</p>
+            </div>
+          </>
+        ) : null}
+
+        <div className="thermal-divider" />
+
+        <div className="thermal-section">
+          <h3>Entrega / control interno</h3>
+          <div className="thermal-signature-block">
+            <p><span>Recibido por:</span><span className="thermal-signature-line" /></p>
+            <p><span>Documento:</span><span className="thermal-signature-line" /></p>
+            <p><span>Firma cliente:</span><span className="thermal-signature-line" /></p>
+            <p><span>Fecha entrega:</span><span className="thermal-signature-line" /></p>
+          </div>
         </div>
       </div>
 
@@ -351,7 +748,7 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
             color: #000;
             font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 10px;
-            line-height: 1.35;
+            line-height: 1.22;
           }
 
           .thermal-header,
@@ -361,12 +758,12 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
 
           .thermal-header h2,
           .thermal-section h3 {
-            margin: 0 0 4px;
+            margin: 0 0 2px;
           }
 
           .thermal-header p,
           .thermal-section p {
-            margin: 2px 0;
+            margin: 1px 0;
             word-break: break-word;
           }
 
@@ -381,12 +778,12 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
 
           .thermal-divider {
             border-top: 1px dashed rgba(0, 0, 0, 0.85);
-            margin: 8px 0;
+            margin: 4px 0;
           }
 
           .thermal-order-number-block {
             text-align: center;
-            margin: 2px 0 6px;
+            margin: 1px 0 3px;
           }
 
           .thermal-order-number-label {
@@ -415,8 +812,8 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           }
 
           .thermal-item {
-            padding: 0 0 7px;
-            margin-bottom: 7px;
+            padding: 0 0 4px;
+            margin-bottom: 4px;
             border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
             break-inside: avoid;
             page-break-inside: avoid;
@@ -449,20 +846,34 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           }
 
           .thermal-item-note {
-            margin-top: 4px;
+            margin-top: 2px;
             font-weight: 600;
+          }
+
+          .thermal-client-name {
+            font-weight: 900;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+            text-transform: none;
+          }
+
+          @media print {
+            .thermal-client-name {
+              font-weight: 900 !important;
+              font-size: 13px !important;
+            }
           }
 
           .thermal-totals {
             display: grid;
-            gap: 4px;
+            gap: 2px;
           }
 
           .thermal-barcode {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
             width: 100%;
             overflow: hidden;
           }
@@ -489,6 +900,83 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           .thermal-centered {
             text-align: center;
             font-weight: 600;
+          }
+
+          .thermal-copy-badge {
+            text-align: center;
+            margin: 6px 0 2px;
+            padding: 4px 0;
+            border: 1px solid #000;
+            border-radius: 2px;
+          }
+
+          .thermal-copy-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+          }
+
+          .thermal-copy-tag {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-top: 2px;
+          }
+
+          .thermal-internal-badge {
+            background: #000;
+            color: #fff;
+          }
+
+          .thermal-internal-badge .thermal-copy-title,
+          .thermal-internal-badge .thermal-copy-tag {
+            color: #fff;
+          }
+
+          .thermal-internal-note {
+            background: rgba(0, 0, 0, 0.06);
+            padding: 3px 4px;
+            border-left: 2px solid #000;
+          }
+
+          .thermal-manual-number {
+            display: inline-block;
+            padding: 1px 6px;
+            border: 1px solid #000;
+            border-radius: 2px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+          }
+
+          .thermal-thanks p {
+            margin: 2px 0;
+          }
+
+          .thermal-signature-block p {
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            margin: 5px 0 0;
+          }
+
+          .thermal-signature-block p span:first-child {
+            white-space: nowrap;
+            font-weight: 600;
+          }
+
+          .thermal-signature-line {
+            flex: 1;
+            border-bottom: 1px solid #000;
+            min-height: 14px;
+          }
+
+          .invoice-mode-customer .internal-copy {
+            display: none !important;
+          }
+
+          .invoice-mode-internal .customer-copy {
+            display: none !important;
           }
 
           @media print {
@@ -537,10 +1025,15 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
               max-width: 80mm !important;
               box-sizing: border-box !important;
               margin: 0 !important;
-              padding: 4mm 4mm 20mm !important;
+              padding: 3mm 4mm 10mm !important;
               overflow: visible !important;
               break-inside: avoid !important;
               page-break-inside: avoid !important;
+            }
+
+            .invoice-mode-both .internal-copy {
+              page-break-before: always !important;
+              break-before: page !important;
             }
 
             .thermal-logo {

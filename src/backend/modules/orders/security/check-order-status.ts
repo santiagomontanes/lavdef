@@ -19,5 +19,5 @@ export const checkOrderStatus = (statusCode: string | null | undefined, action: 
 
 export const canReceiveDelivery = (statusCode: string | null | undefined) => {
   const code = normalize(statusCode);
-  return code === 'READY' || code === 'READY_FOR_DELIVERY';
+  return code === 'READY' || code === 'READY_FOR_DELIVERY' || code === 'PARTIAL_DELIVERY';
 };

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 import { sql, type Kysely } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type {
@@ -74,7 +74,7 @@ export const createWarrantiesService = (db: Kysely<Database>) => {
         'ws.name as status_name',
         'ws.color as status_color'
       ])
-      .orderBy('w.id desc')
+      .orderBy('w.id', 'desc')
       .execute();
 
     return rows.map(mapWarranty);

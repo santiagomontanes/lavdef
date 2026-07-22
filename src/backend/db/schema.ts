@@ -107,6 +107,10 @@ export interface OrdersTable {
   whatsapp_created_sent: number;
   whatsapp_ready_sent: number;
   status_changed_at: Date | null;
+  is_manual: number;
+  manual_order_number: string | null;
+  manual_order_date: Date | null;
+  idempotency_key: string | null;
 }
 
 export interface OrderItemsTable {
@@ -199,7 +203,22 @@ export interface InvoiceItemsSnapshotTable {
   subtotal: number;
   total: number;
 }
-export interface PaymentsTable { id: Generated<number>; order_id: number; invoice_id: number | null; payment_method_id: number; amount: number; reference: string | null; notes: string | null; received_by: number | null; created_at: ColumnType<Date, never, never>; }
+export interface PaymentsTable {
+  id: Generated<number>;
+  order_id: number;
+  invoice_id: number | null;
+  payment_method_id: number;
+  amount: number;
+  reference: string | null;
+  notes: string | null;
+  received_by: number | null;
+  status: string;
+  voided_at: ColumnType<Date | null, never, Date | null>;
+  voided_by: number | null;
+  void_reason: string | null;
+  idempotency_key: string | null;
+  created_at: ColumnType<Date, never, never>;
+}
 export interface DiscountAuthorizationsTable { id: Generated<number>; order_id: number; authorized_by: number; amount: number; reason: string; created_at: ColumnType<Date, never, never>; }
 export interface CashSessionsTable {
   id: Generated<number>;
@@ -219,7 +238,7 @@ export interface WarrantiesTable { id: Generated<number>; order_id: number; stat
 export interface WarrantyStatusLogsTable { id: Generated<number>; warranty_id: number; status_id: number; notes: string | null; created_by: number | null; created_at: ColumnType<Date, never, never>; }
 export interface AttachmentsTable { id: Generated<number>; entity_type: string; entity_id: number; file_name: string; file_path: string; mime_type: string | null; created_at: ColumnType<Date, never, never>; }
 export interface SystemDocumentsTable { id: Generated<number>; document_type: string; document_number: string; payload_json: string; created_at: ColumnType<Date, never, never>; }
-export interface DeliveryRecordsTable { id: Generated<number>; order_id: number; delivered_to: string; delivered_by: number | null; receiver_document: string | null; receiver_phone: string | null; relationship_to_client: string | null; receiver_signature: string | null; outstanding_balance: number; ticket_code: string; created_at: ColumnType<Date, never, never>; }
+export interface DeliveryRecordsTable { id: Generated<number>; order_id: number; delivered_to: string; delivered_by: number | null; receiver_document: string | null; receiver_phone: string | null; relationship_to_client: string | null; receiver_signature: string | null; delivery_type: string; pending_delivery_notes: string | null; outstanding_balance: number; ticket_code: string; created_at: ColumnType<Date, never, never>; }
 export interface NotificationTemplatesTable { id: Generated<number>; code: string; name: string; message_template: string; is_active: number; }
 export interface NotificationsWhatsappTable { id: Generated<number>; client_id: number | null; order_id: number | null; phone: string; message_text: string; status: string; created_at: ColumnType<Date, never, never>; }
 export interface PrintersTable { id: Generated<number>; name: string; printer_type: string; is_default: number; }

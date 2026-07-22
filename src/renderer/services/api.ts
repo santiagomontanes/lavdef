@@ -6,10 +6,16 @@ import type {
   ExpenseInput,
   ApiResponse,
   CashCloseResult,
+  CashClosureFilter,
+  CashClosureListItem,
+  CashMovementInput,
+  CashMovementListItem,
   CashSessionSummary,
   CatalogsPayload,
   Client,
   ClientInput,
+  ClientMergeResult,
+  SimilarClientMatch,
   CompanySettings,
   DashboardSummary,
   DbConnectionConfig,
@@ -23,8 +29,11 @@ import type {
   Order,
   OrderDetail,
   OrderInput,
+  OrdersListParams,
+  OrdersListPageResult,
   Payment,
   PaymentInput,
+  VoidPaymentInput,
   Service,
   ServiceInput,
   SessionUser,
@@ -33,6 +42,7 @@ import type {
   WarrantyStatus,
   WarrantyUpdateInput,
   ReportsSummary,
+  InventoryGeneralReport,
   PrinterInfo,
   OpenDrawerResult,
   RuntimeDiagnostics,
@@ -110,6 +120,8 @@ export const api = {
     unwrap<boolean>(callDesktopApi('getDisableGpuRenderingEnabled')),
   getInvoiceShowAllActiveOrdersEnabled: () =>
     unwrap<boolean>(callDesktopApi('getInvoiceShowAllActiveOrdersEnabled')),
+  getInvoiceShowBarcodeEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getInvoiceShowBarcodeEnabled')),
   getOrderQuantityDecimalsEnabled: () =>
     unwrap<boolean>(callDesktopApi('getOrderQuantityDecimalsEnabled')),
   getPdfOutputDir: () =>
@@ -123,6 +135,10 @@ export const api = {
   updateInvoiceShowAllActiveOrdersEnabled: (enabled: boolean) =>
     unwrap<{ success: true; enabled: boolean }>(
       callDesktopApi('updateInvoiceShowAllActiveOrdersEnabled', enabled)
+    ),
+  updateInvoiceShowBarcodeEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(
+      callDesktopApi('updateInvoiceShowBarcodeEnabled', enabled)
     ),
   updateOrderQuantityDecimalsEnabled: (enabled: boolean) =>
     unwrap<{ success: true; enabled: boolean }>(
@@ -140,6 +156,10 @@ export const api = {
 
   reportsSummary: (from?: string, to?: string) =>
     unwrap<ReportsSummary>(window.desktopApi.getReportsSummary(from, to)),
+  inventoryGeneral: (from?: string, to?: string) =>
+    unwrap<InventoryGeneralReport>(
+      callDesktopApi('getInventoryGeneral', from, to)
+    ),
 
   listWarranties: () => unwrap<WarrantyRecord[]>(window.desktopApi.listWarranties()),
   listWarrantyStatuses: () => unwrap<WarrantyStatus[]>(window.desktopApi.listWarrantyStatuses()),
@@ -155,9 +175,32 @@ export const api = {
   listExpenses: () => unwrap<Expense[]>(window.desktopApi.listExpenses()),
   createExpense: (input: ExpenseInput) => unwrap<Expense>(window.desktopApi.createExpense(input)),
   health: () => unwrap<HealthStatus>(window.desktopApi.health()),
+  getVersionInfo: () =>
+    unwrap<{
+      version: string;
+      isPackaged: boolean;
+      logPath: string | null;
+      logDir: string | null;
+      appliedMigrations: string[];
+      snapshotHasObservations: boolean;
+    }>(callDesktopApi('getVersionInfo')),
   runtimeDiagnostics: () => unwrap<RuntimeDiagnostics>(callDesktopApi('runtimeDiagnostics')),
   restartApp: () => unwrap<{ restarted: boolean }>(window.desktopApi.restartApp()),
   quitApp: () => unwrap<{ quit: boolean }>(window.desktopApi.quitApp()),
+  checkForUpdates: () => unwrap<any>(callDesktopApi('checkForUpdates')),
+  getUpdateStatus: () =>
+    unwrap<{ status: any; currentVersion: string; logPath: string }>(callDesktopApi('getUpdateStatus')),
+  installUpdate: () => unwrap<{ launched: boolean }>(callDesktopApi('installUpdate')),
+  // onUpdateStatus es un suscriptor síncrono que devuelve la función de
+  // unsubscribe del preload. NO va por unwrap (no es un ApiResponse).
+  onUpdateStatus: (callback: (status: any) => void): (() => void) => {
+    const desktopApi = window.desktopApi as unknown as Record<string, (...inner: any[]) => any>;
+    const fn = desktopApi.onUpdateStatus;
+    if (typeof fn !== 'function') {
+      return () => {};
+    }
+    return fn(callback) as () => void;
+  },
   openExternal: (url: string) => unwrap(window.desktopApi.openExternal({ url })),
   printToPdf: (input?: Omit<DesktopPdfInput, 'targetDir' | 'subfolder'>) =>
     unwrap<{ saved: boolean; path: string | null }>(window.desktopApi.printToPdf(input)),
@@ -187,11 +230,18 @@ export const api = {
   listClients: () => unwrap<Client[]>(window.desktopApi.listClients()),
   searchClientsByName: (term: string, limit = 40) =>
     unwrap<Client[]>(window.desktopApi.searchClients(term, limit)),
-  createClient: (input: ClientInput) => unwrap<Client>(window.desktopApi.createClient(input)),
+  createClient: (input: ClientInput & { force?: boolean }) =>
+    unwrap<Client>(window.desktopApi.createClient(input)),
   updateClient: (id: number, input: ClientInput) => unwrap<Client>(window.desktopApi.updateClient(id, input)),
   deleteClient: (id: number) => unwrap<{ id: number }>(window.desktopApi.deleteClient(id)),
+  findSimilarClients: (input: { firstName: string; lastName: string; phone: string; excludeId?: number }) =>
+    unwrap<SimilarClientMatch[]>(callDesktopApi('findSimilarClients', input)),
+  mergeClients: (primaryId: number, duplicateId: number) =>
+    unwrap<ClientMergeResult>(callDesktopApi('mergeClients', primaryId, duplicateId)),
 
   listOrders: () => unwrap<Order[]>(window.desktopApi.listOrders()),
+  listOrdersPage: (params?: OrdersListParams) =>
+    unwrap<OrdersListPageResult>(callDesktopApi('listOrdersPage', params ?? {})),
   searchOrders: (term: string, limit = 8) =>
     unwrap<Order[]>(window.desktopApi.searchOrders(term, limit)),
   orderDetail: (id: number) => unwrap<OrderDetail>(window.desktopApi.getOrderDetail(id)),
@@ -208,12 +258,15 @@ export const api = {
   listPayments: (orderId?: number) => unwrap<Payment[]>(window.desktopApi.listPayments(orderId)),
   createPayment: (input: PaymentInput) => unwrap<Payment>(window.desktopApi.createPayment(input)),
   createPaymentBatch: (input: BatchPaymentInput) => unwrap<Payment[]>(window.desktopApi.createPaymentBatch(input)),
+  voidPayment: (input: VoidPaymentInput) => unwrap<Payment>(callDesktopApi('voidPayment', input)),
 
   listInvoices: () => unwrap<Invoice[]>(window.desktopApi.listInvoices()),
   searchInvoices: (term: string, limit = 8) =>
     unwrap<Invoice[]>(window.desktopApi.searchInvoices(term, limit)),
   invoiceDetail: (id: number) => unwrap<InvoiceDetail>(window.desktopApi.getInvoiceDetail(id)),
   createInvoiceFromOrder: (orderId: number) => unwrap<InvoiceDetail>(window.desktopApi.createInvoiceFromOrder(orderId)),
+  updateInvoiceNotes: (orderId: number, notes: string | null) =>
+    unwrap<{ id: number; notes: string | null }>(callDesktopApi('updateInvoiceNotes', orderId, notes)),
 
   openCashSession: (input: CashOpenInput) =>
   unwrap(window.desktopApi.openCashSession(input)),
@@ -222,6 +275,12 @@ export const api = {
   cashClosureDetail: (closureId: number) =>
     unwrap<CashCloseResult>(callDesktopApi('getCashClosureDetail', closureId)),
   cashSummary: () => unwrap<CashSessionSummary>(window.desktopApi.getCashSummary()),
+  addCashMovement: (input: CashMovementInput) =>
+    unwrap<CashMovementListItem>(callDesktopApi('addCashMovement', input)),
+  listCashMovements: (args?: { sessionId?: number | null; limit?: number; offset?: number }) =>
+    unwrap<CashMovementListItem[]>(callDesktopApi('listCashMovements', args)),
+  listCashClosures: (filter?: CashClosureFilter) =>
+    unwrap<CashClosureListItem[]>(callDesktopApi('listCashClosures', filter)),
 
   listDeliveries: () => unwrap<DeliveryRecord[]>(window.desktopApi.listDeliveries()),
   createDelivery: (input: DeliveryInput) => unwrap<DeliveryRecord>(window.desktopApi.createDelivery(input)),

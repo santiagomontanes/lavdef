@@ -9,6 +9,7 @@ import type {
   LoginInput,
   OrderInput,
   PaymentInput,
+  VoidPaymentInput,
   PendingReadyCheck,
   ServiceInput,
   SetupFinalizeInput,
@@ -41,6 +42,11 @@ if (gpuSafeModeEnabled && htmlCanvasElementCtor) {
   }) as typeof originalGetContext;
 }
 
+if (gpuSafeModeEnabled) {
+  (globalThis as { document?: { documentElement?: { setAttribute: (k: string, v: string) => void } } })
+    .document?.documentElement?.setAttribute('data-gpu-safe-mode', 'true');
+}
+
 contextBridge.exposeInMainWorld('desktopApi', {
   getPlatform: () => process.platform,
   verifyPassword: (password: string) =>
@@ -58,6 +64,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('settings:get-disable-gpu-rendering-enabled'),
   getInvoiceShowAllActiveOrdersEnabled: () =>
     ipcRenderer.invoke('settings:get-invoice-show-all-active-orders-enabled'),
+  getInvoiceShowBarcodeEnabled: () =>
+    ipcRenderer.invoke('settings:get-invoice-show-barcode-enabled'),
   getOrderQuantityDecimalsEnabled: () =>
     ipcRenderer.invoke('settings:get-order-quantity-decimals-enabled'),
   getPdfOutputDir: () =>
@@ -70,6 +78,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('settings:update-disable-gpu-rendering-enabled', enabled),
   updateInvoiceShowAllActiveOrdersEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('settings:update-invoice-show-all-active-orders-enabled', enabled),
+  updateInvoiceShowBarcodeEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-invoice-show-barcode-enabled', enabled),
   updateOrderQuantityDecimalsEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('settings:update-order-quantity-decimals-enabled', enabled),
 
@@ -96,6 +106,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('settings:update-company', input),
   getReportsSummary: (from?: string, to?: string) =>
     ipcRenderer.invoke('reports:summary', from, to),
+  getInventoryGeneral: (from?: string, to?: string) =>
+    ipcRenderer.invoke('reports:inventory-general', from, to),
 
   listWarranties: () => ipcRenderer.invoke('warranties:list'),
   listWarrantyStatuses: () => ipcRenderer.invoke('warranties:statuses'),
@@ -105,9 +117,18 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('warranties:update-status', id, input),
 
   health: () => ipcRenderer.invoke('app:health'),
+  getVersionInfo: () => ipcRenderer.invoke('app:version-info'),
   runtimeDiagnostics: () => ipcRenderer.invoke('app:runtime-diagnostics'),
   restartApp: () => ipcRenderer.invoke('app:restart'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+  getUpdateStatus: () => ipcRenderer.invoke('app:update-status'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateStatus: (callback: (status: any) => void) => {
+    const listener = (_event: unknown, status: any) => callback(status);
+    ipcRenderer.on('app:update-status', listener);
+    return () => ipcRenderer.removeListener('app:update-status', listener);
+  },
   openExternal: (payload: ExternalLinkPayload) => ipcRenderer.invoke('app:open-external', payload),
   printToPdf: (input?: Omit<DesktopPdfInput, 'targetDir' | 'subfolder'>) => ipcRenderer.invoke('app:print-to-pdf', input),
   printToPdfAuto: (input?: DesktopPdfInput) =>
@@ -135,11 +156,17 @@ contextBridge.exposeInMainWorld('desktopApi', {
 
   listClients: () => ipcRenderer.invoke('clients:list'),
   searchClients: (term: string, limit?: number) => ipcRenderer.invoke('clients:search', term, limit),
-  createClient: (input: ClientInput) => ipcRenderer.invoke('clients:create', input),
+  createClient: (input: ClientInput & { force?: boolean }) => ipcRenderer.invoke('clients:create', input),
   updateClient: (id: number, input: ClientInput) => ipcRenderer.invoke('clients:update', id, input),
   deleteClient: (id: number) => ipcRenderer.invoke('clients:delete', id),
+  findSimilarClients: (input: { firstName: string; lastName: string; phone: string; excludeId?: number }) =>
+    ipcRenderer.invoke('clients:find-similar', input),
+  mergeClients: (primaryId: number, duplicateId: number) =>
+    ipcRenderer.invoke('clients:merge', primaryId, duplicateId),
 
   listOrders: () => ipcRenderer.invoke('orders:list'),
+  listOrdersPage: (params?: { page?: number; pageSize?: number; status?: number | 'ALL' | null; search?: string | null }) =>
+    ipcRenderer.invoke('orders:list-page', params),
   searchOrders: (term: string, limit?: number) => ipcRenderer.invoke('orders:search', term, limit),
   getOrderDetail: (id: number) => ipcRenderer.invoke('orders:detail', id),
   getOrderCatalogs: () => ipcRenderer.invoke('orders:catalogs'),
@@ -156,11 +183,14 @@ contextBridge.exposeInMainWorld('desktopApi', {
   listPayments: (orderId?: number) => ipcRenderer.invoke('payments:list', orderId),
   createPayment: (input: PaymentInput) => ipcRenderer.invoke('payments:create', input),
   createPaymentBatch: (input: BatchPaymentInput) => ipcRenderer.invoke('payments:create-batch', input),
+  voidPayment: (input: VoidPaymentInput) => ipcRenderer.invoke('payments:void', input),
 
   listInvoices: () => ipcRenderer.invoke('invoices:list'),
   searchInvoices: (term: string, limit?: number) => ipcRenderer.invoke('invoices:search', term, limit),
   getInvoiceDetail: (id: number) => ipcRenderer.invoke('invoices:detail', id),
   createInvoiceFromOrder: (orderId: number) => ipcRenderer.invoke('invoices:create-from-order', orderId),
+  updateInvoiceNotes: (orderId: number, notes: string | null) =>
+    ipcRenderer.invoke('invoices:update-notes', orderId, notes),
 
   openCashSession: (input: {
   openingAmount?: number;
@@ -170,6 +200,12 @@ contextBridge.exposeInMainWorld('desktopApi', {
   closeCashSession: (declaredAmount: number) => ipcRenderer.invoke('cash:close', declaredAmount),
   getCashClosureDetail: (closureId: number) => ipcRenderer.invoke('cash:closure-detail', closureId),
   getCashSummary: () => ipcRenderer.invoke('cash:summary'),
+  addCashMovement: (input: { type: 'CASH_IN' | 'CASH_OUT'; amount: number; notes?: string | null }) =>
+    ipcRenderer.invoke('cash:movement', input),
+  listCashMovements: (args?: { sessionId?: number | null; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke('cash:movements', args),
+  listCashClosures: (filter?: { from?: string | null; to?: string | null; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke('cash:closures', filter),
 
   listExpenses: () => ipcRenderer.invoke('expenses:list'),
   createExpense: (input: { categoryId: number; paymentMethodId: number; amount: number; description: string; expenseDate: string }) =>

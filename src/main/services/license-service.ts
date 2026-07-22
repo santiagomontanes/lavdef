@@ -18,8 +18,8 @@ const store = new ElectronStore({
   name: 'license-store'
 }) as any;
 
-const SUPABASE_URL = 'https://wswuifmfauepefrtaonf.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_aun5sv8y2isZI_ISPRfeDg_3rBQP6Rp';
+const SUPABASE_URL = 'https://awutehzbhhklcgodmluq.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3dXRlaHpiaGhrbGNnb2RtbHVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjU1NDcsImV4cCI6MjA4ODMwMTU0N30.Rtzda_lwrYxSjLSRORZ8ow2k4y7lZC5XjUMnN3qOIqs';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 

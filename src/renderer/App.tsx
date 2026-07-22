@@ -21,6 +21,8 @@ import { InventoryPage } from './modules/inventory/pages/InventoryPage';
 import { ExpensesPage } from './modules/expenses/pages/ExpensesPage';
 import { WarrantiesPage } from './modules/warranties/pages/WarrantiesPage';
 import { ReportsPage } from './modules/reports/pages/ReportsPage';
+import { CashReportPrintPage } from './modules/reports/pages/CashReportPrintPage';
+import { InventoryGeneralPrintPage } from './modules/reports/pages/InventoryGeneralPrintPage';
 import { WhatsappPage } from './modules/whatsapp/pages/WhatsappPage';
 import { SettingsPage } from './modules/settings/pages/SettingsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
@@ -72,6 +74,7 @@ export default function App() {
 
     const unsubStatusChanged = window.desktopApi.onOrdersStatusChanged(() => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-page'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     });
@@ -204,6 +207,7 @@ export default function App() {
                   setPendingReadyChecks((prev) => prev.filter((c) => c.queueId !== check.queueId || c.type === 'DUE_TOMORROW'));
                 }
                 await queryClient.invalidateQueries({ queryKey: ['orders'] });
+                await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
                 await queryClient.invalidateQueries({ queryKey: ['order-detail', check.orderId] });
                 await queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
                 await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -223,7 +227,7 @@ export default function App() {
           <Route path="/clientes" element={<ClientsPage />} />
           <Route path="/ordenes" element={<OrdersPage />} />
           <Route path="/ordenes/nueva" element={<NewOrderPage />} />
-          <Route path="/ordenes/:orderId" element={<OrderDetailPage />} />
+          <Route path="/ordenes/:orderId" element={<OrderDetailPage user={user} />} />
           <Route path="/pagos" element={<PaymentsPage />} />
           <Route path="/facturacion" element={<InvoicesPage />} />
           <Route path="/facturas/:orderId" element={<InvoiceDetailPage user={user} />} />
@@ -233,6 +237,8 @@ export default function App() {
           <Route path="/garantias" element={<WarrantiesPage />} />
           <Route path="/inventario" element={withRole(<InventoryPage />, true)} />
           <Route path="/reportes" element={withRole(<ReportsPage />, true)} />
+          <Route path="/arqueo/imprimir" element={withRole(<CashReportPrintPage user={user} />, true)} />
+          <Route path="/reportes/inventario-general" element={withRole(<InventoryGeneralPrintPage user={user} />, true)} />
           <Route path="/whatsapp" element={<WhatsappPage />} />
           <Route path="/configuracion" element={withRole(<SettingsPage user={user} />, true)} />
           <Route path="/usuarios" element={withRole(<UsersPage />, true)} />

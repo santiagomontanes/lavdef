@@ -1,10 +1,11 @@
-import { sql, type Kysely } from 'kysely';
+﻿import { sql, type Kysely } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type { Invoice, InvoiceDetail } from '../../../shared/types.js';
 import {
   getCurrentSessionUserId,
   getCurrentSessionUserName
 } from '../../../main/services/session-context.js';
+import { diagnosticLogger } from '../../../main/services/diagnostic-logger.js';
 
 const buildTicketCode = (orderNumber: string) => `TK-${orderNumber}`;
 const INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY = 'invoice_show_all_active_orders';
@@ -95,8 +96,10 @@ const mapInvoice = (row: any): Invoice => ({
   orderId: row.order_id,
   orderNumber: row.order_number,
   clientId: row.client_id,
+  clientCode: row.client_code ?? null,
   clientName: row.client_name,
   clientPhone: row.client_phone ?? null,
+  clientAddress: row.client_address ?? null,
   subtotal: Number(row.subtotal),
   taxTotal: Number(row.tax_total),
   total: Number(row.total),
@@ -105,6 +108,13 @@ const mapInvoice = (row: any): Invoice => ({
   notes: row.order_notes ?? null,
   paidTotal: Number(row.paid_total ?? 0),
   balanceDue: Number(row.balance_due ?? 0),
+  statusCode: row.status_code ?? null,
+  statusName: row.status_name ?? null,
+  isManual: Boolean(row.is_manual),
+  manualOrderNumber: row.manual_order_number ?? null,
+  manualOrderDate: row.manual_order_date
+    ? new Date(row.manual_order_date).toISOString().slice(0, 10)
+    : null,
   ticketCode: row.ticket_code,
   companyName: row.company_name ?? null,
   companyLegalName: row.company_legal_name ?? null,
@@ -125,7 +135,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!setting) return true;
@@ -147,6 +157,26 @@ export const createInvoicesService = (db: Kysely<Database>) => {
     invoiceItemColumnsCache = new Set(
       rows.rows.map((row) => String(row.column_name))
     );
+
+    // Producción: si faltan las columnas críticas (customer_observations,
+    // internal_observations), la migración 021 no se aplicó y las
+    // observaciones nunca se guardarán al snapshot. Logueamos para que el
+    // soporte pueda confirmarlo desde el log del cliente sin consultar BD.
+    const missingCritical = [
+      'customer_observations',
+      'internal_observations'
+    ].filter((col) => !invoiceItemColumnsCache!.has(col));
+
+    if (missingCritical.length > 0) {
+      diagnosticLogger.error('invoices.snapshot', 'Faltan columnas críticas en invoice_items_snapshot', {
+        missing: missingCritical,
+        availableColumns: Array.from(invoiceItemColumnsCache)
+      });
+    } else {
+      diagnosticLogger.info('invoices.snapshot', 'invoice_items_snapshot tiene columnas críticas', {
+        columnsCount: invoiceItemColumnsCache.size
+      });
+    }
 
     return invoiceItemColumnsCache;
   };
@@ -211,7 +241,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .where('o.id', '!=', excludeOrderId)
       .where('os.code', 'not in', ['DELIVERED', 'CANCELLED', 'CANCELED', 'CANCELADO'])
       .groupBy(['o.id', 'o.order_number', 'o.due_date'])
-      .orderBy('o.id desc')
+      .orderBy('o.id', 'desc')
       .execute();
 
     return rows.map((row) => ({
@@ -234,6 +264,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .selectFrom('invoices as i')
       .innerJoin('clients as c', 'c.id', 'i.client_id')
       .innerJoin('orders as o', 'o.id', 'i.order_id')
+      .leftJoin('order_statuses as os', 'os.id', 'o.status_id')
       .select([
         'i.id',
         'i.invoice_number',
@@ -249,11 +280,18 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         'o.paid_total',
         'o.balance_due',
         'o.order_number',
+        'o.is_manual',
+        'o.manual_order_number',
+        'o.manual_order_date',
+        sql<string | null>`c.code`.as('client_code'),
         sql<string>`c.first_name`.as('first_name'),
         sql<string>`c.last_name`.as('last_name'),
-        sql<string | null>`c.phone`.as('client_phone')
+        sql<string | null>`c.phone`.as('client_phone'),
+        sql<string | null>`c.address`.as('client_address'),
+        sql<string | null>`os.code`.as('status_code'),
+        sql<string | null>`os.name`.as('status_name')
       ])
-      .orderBy('i.id desc')
+      .orderBy('i.id', 'desc')
       .execute();
 
     return rows.map((row) =>
@@ -286,6 +324,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .innerJoin('clients as c', 'c.id', 'i.client_id')
       .innerJoin('orders as o', 'o.id', 'i.order_id')
       .leftJoin('users as u', 'u.id', 'o.created_by')
+      .leftJoin('order_statuses as os', 'os.id', 'o.status_id')
       .select([
         'i.id',
         'i.invoice_number',
@@ -301,10 +340,17 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         'o.notes as order_notes',
         'o.paid_total',
         'o.balance_due',
+        'o.is_manual',
+        'o.manual_order_number',
+        'o.manual_order_date',
         sql<string | null>`u.full_name`.as('generated_by'),
+        sql<string | null>`c.code`.as('client_code'),
         sql<string>`c.first_name`.as('first_name'),
         sql<string>`c.last_name`.as('last_name'),
-        sql<string | null>`c.phone`.as('client_phone')
+        sql<string | null>`c.phone`.as('client_phone'),
+        sql<string | null>`c.address`.as('client_address'),
+        sql<string | null>`os.code`.as('status_code'),
+        sql<string | null>`os.name`.as('status_name')
       ])
       .where('i.id', '=', id)
       .executeTakeFirstOrThrow();
@@ -320,6 +366,41 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .where('invoice_id', '=', id)
       .orderBy('id')
       .execute();
+
+    const paymentRows = await db
+      .selectFrom('payments as p')
+      .innerJoin('payment_methods as pm', 'pm.id', 'p.payment_method_id')
+      .leftJoin('users as ru', 'ru.id', 'p.received_by')
+      .select([
+        'p.id',
+        'p.amount',
+        'p.reference',
+        'p.notes',
+        'p.status',
+        'p.voided_at',
+        'p.void_reason',
+        'p.created_at',
+        sql<string>`pm.name`.as('method_name'),
+        sql<string | null>`ru.full_name`.as('received_by_name')
+      ])
+      .where('p.order_id', '=', invoice.order_id)
+      .where(sql<boolean>`COALESCE(p.status, 'ACTIVE') <> 'VOIDED'`)
+      .orderBy('p.id')
+      .execute();
+
+    const payments = paymentRows.map((row) => ({
+      id: row.id,
+      amount: Number(row.amount ?? 0),
+      methodName: String(row.method_name ?? ''),
+      reference: row.reference ?? null,
+      notes: row.notes ?? null,
+      receivedBy: row.received_by_name ?? null,
+      status: row.status ?? 'ACTIVE',
+      isVoided: String(row.status ?? 'ACTIVE').toUpperCase() === 'VOIDED',
+      voidedAt: row.voided_at ? new Date(row.voided_at).toISOString() : null,
+      voidReason: row.void_reason ?? null,
+      createdAt: new Date(row.created_at).toISOString()
+    }));
 
     const mapped = mapInvoice({
       ...invoice,
@@ -353,7 +434,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         damages: null,
         missingAccessories: null,
         customerObservations: item.customer_observations ?? null,
-        internalObservations: null,
+        internalObservations: (item as any).internal_observations ?? null,
         unitPrice: Number(item.unit_price),
         discountAmount: Number(item.discount_amount ?? 0),
         surchargeAmount: Number(item.surcharge_amount ?? 0),
@@ -361,6 +442,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         total: Number(item.total ?? item.subtotal)
       })),
       activeOrders,
+      payments,
       generatedBy: getCurrentSessionUserName() ?? invoice.generated_by ?? null,
       softwareName: 'LavaSuite Desktop',
       showAllActiveOrders,
@@ -410,6 +492,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .selectFrom('invoices as i')
       .innerJoin('clients as c', 'c.id', 'i.client_id')
       .innerJoin('orders as o', 'o.id', 'i.order_id')
+      .leftJoin('order_statuses as os', 'os.id', 'o.status_id')
       .select([
         'i.id',
         'i.invoice_number',
@@ -425,9 +508,16 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         'o.paid_total',
         'o.balance_due',
         'o.order_number',
+        'o.is_manual',
+        'o.manual_order_number',
+        'o.manual_order_date',
+        sql<string | null>`c.code`.as('client_code'),
         sql<string>`c.first_name`.as('first_name'),
         sql<string>`c.last_name`.as('last_name'),
-        sql<string | null>`c.phone`.as('client_phone')
+        sql<string | null>`c.phone`.as('client_phone'),
+        sql<string | null>`c.address`.as('client_address'),
+        sql<string | null>`os.code`.as('status_code'),
+        sql<string | null>`os.name`.as('status_name')
       ])
       .where((eb) =>
         eb.or([
@@ -436,7 +526,7 @@ export const createInvoicesService = (db: Kysely<Database>) => {
           sql<boolean>`CONCAT(c.first_name, ' ', c.last_name) LIKE ${likeTerm}`
         ])
       )
-      .orderBy('i.id desc')
+      .orderBy('i.id', 'desc')
       .limit(safeLimit)
       .execute();
 
@@ -453,6 +543,28 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         company_policies: company?.invoice_policies ?? null
       })
     );
+  };
+
+  const findExistingInvoiceForOrder = async (orderId: number) =>
+    db
+      .selectFrom('invoices')
+      .select(['id', 'invoice_number'])
+      .where('order_id', '=', orderId)
+      .orderBy('id')
+      .executeTakeFirst();
+
+  const isDuplicateOrderInvoiceError = (err: unknown) => {
+    const code = (err as { code?: string } | null)?.code ?? '';
+    if (code !== 'ER_DUP_ENTRY') return false;
+    const message = String((err as { message?: string } | null)?.message ?? '');
+    return /uk_invoices_order_id|invoices\.order_id|for key 'order_id'/i.test(message);
+  };
+
+  const isDuplicateInvoiceNumberError = (err: unknown) => {
+    const code = (err as { code?: string } | null)?.code ?? '';
+    if (code !== 'ER_DUP_ENTRY') return false;
+    const message = String((err as { message?: string } | null)?.message ?? '');
+    return /invoice_number/i.test(message);
   };
 
   const createFromOrder = async (orderId: number): Promise<InvoiceDetail> => {
@@ -477,17 +589,24 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .limit(1)
       .executeTakeFirst();
 
-    const existingInvoice = await db
-      .selectFrom('invoices')
-      .select(['id', 'invoice_number'])
-      .where('order_id', '=', orderId)
-      .orderBy('id desc')
-      .executeTakeFirst();
+    // Punto idempotente: si la orden ya tiene factura, refrescamos su
+    // snapshot y totales en lugar de crear una nueva. El UNIQUE
+    // uk_invoices_order_id (migración 018) protege contra carreras a
+    // nivel de BD; aquí lo confirmamos a nivel de aplicación.
+    const existingInvoice = await findExistingInvoiceForOrder(orderId);
 
     let invoiceId = 0;
 
     if (existingInvoice) {
       invoiceId = existingInvoice.id;
+
+      diagnosticLogger.info('invoices.createFromOrder', 'Refrescando snapshot de factura existente', {
+        orderId,
+        invoiceId,
+        invoiceNumber: existingInvoice.invoice_number,
+        orderItemsCount: orderItems.length,
+        orderItemsWithCustomerObs: orderItems.filter((it: any) => String(it.customer_observations ?? '').trim()).length
+      });
 
       await db.transaction().execute(async (trx) => {
         await trx
@@ -599,10 +718,27 @@ export const createInvoicesService = (db: Kysely<Database>) => {
     };
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      try { await doInsert(); break; }
-      catch (err: any) {
-        const isDuplicate = err?.code === 'ER_DUP_ENTRY' || String(err?.message ?? '').includes('Duplicate entry');
-        if (isDuplicate && attempt < 3) continue;
+      try {
+        await doInsert();
+        break;
+      } catch (err: any) {
+        // Carrera: otra petición acaba de crear la factura para esta
+        // orden. Recuperamos la canónica y retornamos sin duplicar.
+        if (isDuplicateOrderInvoiceError(err)) {
+          const winner = await findExistingInvoiceForOrder(orderId);
+          if (winner) {
+            invoiceId = winner.id;
+            return detail(invoiceId);
+          }
+        }
+
+        if (isDuplicateInvoiceNumberError(err) && attempt < 3) {
+          // Contador desfasado: el GREATEST en el siguiente intento lo
+          // corrige solo. No reintentamos indefinidamente para evitar
+          // un loop si la BD está realmente inconsistente.
+          continue;
+        }
+
         throw err;
       }
     }
@@ -610,5 +746,44 @@ export const createInvoicesService = (db: Kysely<Database>) => {
     return detail(invoiceId);
   };
 
-  return { list, detail, createFromOrder, search };
+  // Update solo de las notas de la orden subyacente. Aislamos esta
+  // mutation para que el guardado de "Notas" desde la pantalla de
+  // factura/orden no recalcule items ni dispare validaciones pesadas
+  // (esa era la causa de que los cambios "se revirtieran" al refetch).
+  const updateNotes = async (orderId: number, notes: string | null) => {
+    const actorId = getCurrentSessionUserId() ?? 1;
+    const actorName = getCurrentSessionUserName();
+    const trimmed = notes && notes.trim().length > 0 ? notes : null;
+
+    const order = await db
+      .selectFrom('orders')
+      .select(['id', 'order_number', 'notes'])
+      .where('id', '=', orderId)
+      .executeTakeFirst();
+
+    if (!order) throw new Error('Orden no encontrada.');
+
+    await db
+      .updateTable('orders')
+      .set({ notes: trimmed })
+      .where('id', '=', orderId)
+      .execute();
+
+    await db.insertInto('audit_logs').values({
+      user_id: actorId,
+      action: 'ORDER_NOTES_UPDATE',
+      entity_type: 'order',
+      entity_id: String(orderId),
+      details_json: JSON.stringify({
+        orderNumber: order.order_number,
+        previousNotes: order.notes,
+        notes: trimmed,
+        actorName
+      })
+    }).execute();
+
+    return { id: orderId, notes: trimmed };
+  };
+
+  return { list, detail, createFromOrder, search, updateNotes };
 };

@@ -1,7 +1,13 @@
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #23303d;
-  background: #eef2f5;
+  color: #17324d;
+  background: #eefaff;
+}
+
+[data-gpu-safe-mode="true"] * {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
 }
 
 * {
@@ -11,11 +17,11 @@
 html,
 body {
   margin: 0;
-  background: #eef2f5;
+  background: #eefaff;
 }
 
 a {
-  color: #4f6ef7;
+  color: #0284c7;
   text-decoration: none;
 }
 
@@ -34,7 +40,7 @@ textarea {
 }
 
 .sidebar {
-  background: linear-gradient(180deg, #1f2c38 0%, #243443 100%);
+  background: linear-gradient(180deg, #075985 0%, #0f6f9f 52%, #164e63 100%);
   color: white;
   padding: 24px 18px;
   display: flex;
@@ -45,7 +51,7 @@ textarea {
 }
 
 .brand-panel {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   padding: 16px;
   border-radius: 18px;
   display: grid;
@@ -71,7 +77,7 @@ textarea {
   height: 72px;
   font-size: 1.25rem;
   font-weight: 800;
-  color: #23303d;
+  color: #17324d;
 }
 
 .sidebar-nav {
@@ -84,7 +90,7 @@ textarea {
 }
 
 .nav-link {
-  color: #dce8f3;
+  color: #e0f7ff;
   min-height: 48px;
   padding: 12px 14px;
   border-radius: 12px;
@@ -95,7 +101,7 @@ textarea {
 
 .nav-link.active,
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(224, 247, 255, 0.18);
 }
 
 .sidebar-footer {
@@ -128,7 +134,7 @@ textarea {
 
 .topbar p {
   margin: 6px 0 0;
-  color: #627182;
+  color: #54708a;
 }
 
 .topbar-tools {
@@ -150,7 +156,7 @@ textarea {
   overflow: auto;
   z-index: 30;
   padding: 12px;
-  border: 1px solid #e5ebf1;
+  border: 1px solid #d7eef8;
 }
 
 .topbar-search-group {
@@ -164,7 +170,7 @@ textarea {
 }
 
 .topbar-search-item {
-  border: 1px solid #e7edf2;
+  border: 1px solid #d9edf7;
   background: #fff;
   border-radius: 10px;
   padding: 8px 10px;
@@ -175,7 +181,7 @@ textarea {
 }
 
 .topbar-search-item:hover {
-  background: #f8fbff;
+  background: #f0fbff;
 }
 
 .topbar-search-item small {
@@ -191,7 +197,7 @@ textarea {
   background: white;
   border-radius: 16px;
   padding: 12px 16px;
-  box-shadow: 0 6px 24px rgba(31, 44, 56, 0.08);
+  box-shadow: 0 6px 24px rgba(14, 116, 144, 0.1);
   display: grid;
   min-width: 180px;
   justify-items: end;
@@ -200,7 +206,7 @@ textarea {
 
 .topbar-clock {
   font-variant-numeric: tabular-nums;
-  color: #4f6ef7;
+  color: #0284c7;
   font-weight: 700;
 }
 
@@ -255,7 +261,7 @@ textarea {
 .modal-card {
   background: white;
   border-radius: 22px;
-  box-shadow: 0 10px 30px rgba(31, 44, 56, 0.08);
+  box-shadow: 0 10px 30px rgba(14, 116, 144, 0.1);
 }
 
 .card-panel {
@@ -302,7 +308,7 @@ textarea {
 
 .page-header p {
   margin: 6px 0 0;
-  color: #6a7786;
+  color: #55738d;
 }
 
 .summary-card {
@@ -329,8 +335,8 @@ textarea {
 
 .field {
   width: 100%;
-  border: 1px solid #d7dfe6;
-  background: #fbfdfe;
+  border: 1px solid #cfe8f3;
+  background: #f8fdff;
   border-radius: 12px;
   padding: 11px 14px;
 }
@@ -379,13 +385,13 @@ textarea.field {
 }
 
 .button-primary {
-  background: #4f6ef7;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
 }
 
 .button-secondary {
-  background: #eef2f7;
-  color: #23303d;
+  background: #e8f7fc;
+  color: #17415f;
 }
 
 .button-danger {
@@ -432,12 +438,12 @@ textarea.field {
 }
 
 .item-card {
-  border: 1px solid #ebf0f4;
+  border: 1px solid #dff1f8;
   border-radius: 18px;
   padding: 16px;
   display: grid;
   gap: 12px;
-  background: #fafcfd;
+  background: #f7fcff;
 }
 
 .totals-panel {
@@ -449,8 +455,8 @@ textarea.field {
 }
 
 .totals-panel div {
-  background: #f7f9fb;
-  border: 1px solid #111;
+  background: #f0faff;
+  border: 1px solid #b8ddec;
   border-radius: 14px;
   padding: 16px;
   display: grid;
@@ -466,7 +472,7 @@ textarea.field {
 .data-table td {
   text-align: left;
   padding: 13px 10px;
-  border-bottom: 1px solid #eef2f5;
+  border-bottom: 1px solid #e3f2f8;
   vertical-align: top;
 }
 
@@ -480,8 +486,8 @@ textarea.field {
   padding: 6px 10px;
   border-radius: 999px;
   font-weight: 600;
-  background: #e8edf2;
-  color: #445260;
+  background: #e7f6fb;
+  color: #1e4d68;
 }
 
 .status-chip[data-color='green'] {
@@ -495,8 +501,8 @@ textarea.field {
 }
 
 .status-chip[data-color='blue'] {
-  background: #dfeafb;
-  color: #264f89;
+  background: #dff3ff;
+  color: #075985;
 }
 
 .status-chip[data-color='slate'] {
@@ -534,14 +540,14 @@ textarea.field {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid #eef2f5;
+  border-bottom: 1px solid #e3f2f8;
   padding-bottom: 12px;
 }
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(31, 44, 56, 0.4);
+  background: rgba(15, 76, 101, 0.42);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -569,7 +575,7 @@ textarea.field {
 
 .icon-button {
   border: none;
-  background: #eef2f7;
+  background: #e8f7fc;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -592,7 +598,7 @@ textarea.field {
 }
 
 .tab-chip.active {
-  background: #4f6ef7;
+  background: #0284c7;
   color: white;
 }
 
@@ -617,26 +623,26 @@ textarea.field {
 .order-status-select {
   min-width: 180px;
   background: #fff;
-  border: 1px solid #d7dfe6;
+  border: 1px solid #cfe8f3;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .order-status-select:focus {
-  border-color: #4f6ef7;
-  box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.12);
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14);
   outline: none;
 }
 
 .row-actions a {
   padding: 6px 10px;
   border-radius: 10px;
-  background: #f3f6fa;
-  color: #334150;
+  background: #eaf8fd;
+  color: #17415f;
   font-weight: 600;
 }
 
 .row-actions a:hover {
-  background: #e8eef7;
+  background: #d9f1fb;
 }
 
 /* =========================
@@ -804,9 +810,18 @@ textarea.field {
 }
 
 @media print {
+  /* Aislamiento de impresión: además de .no-print (marcador explícito
+     usado por los cajones/overlays sin className propio, ver AppShell.tsx
+     y LicenseRenewalBanner.tsx), se ocultan por nombre de clase estable
+     el sidebar, el topbar (incluye buscador global y campana de
+     notificaciones), cualquier modal (.modal-backdrop, usado por TODOS
+     los modales de la app vía el componente Modal) y los botones de
+     acción por fila. Nada de esto cambia el diseño en pantalla: solo
+     aplica dentro de @media print. */
   .no-print,
   .topbar,
   .sidebar,
+  .modal-backdrop,
   .row-actions {
     display: none !important;
   }

@@ -1,4 +1,10 @@
 import { app, dialog, ipcMain, shell } from 'electron';
+import {
+  checkForUpdates,
+  getAutoUpdateLogPath,
+  getCurrentAutoUpdateStatus,
+  installDownloadedUpdate
+} from '../services/auto-updater-service.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { databaseManager } from '../services/database-manager.js';
@@ -28,6 +34,7 @@ import {
   getCurrentSessionUser,
   setCurrentSessionUser
 } from '../services/session-context.js';
+import { diagnosticLogger } from '../services/diagnostic-logger.js';
 
 import type {
   BatchPaymentInput,
@@ -37,7 +44,9 @@ import type {
   ExternalLinkPayload,
   LoginInput,
   OrderInput,
+  OrdersListParams,
   PaymentInput,
+  VoidPaymentInput,
   SetupFinalizeInput,
   SetupRootConnectionInput
 } from '../../shared/types.js';
@@ -74,6 +83,9 @@ export const registerIpc = () => {
   const publicChannels = new Set([
     'app:health',
     'app:runtime-diagnostics',
+    'app:check-for-updates',
+    'app:update-status',
+    'app:install-update',
     'setup:create-database',
     'setup:initialize-schema',
     'setup:finalize',
@@ -98,6 +110,7 @@ export const registerIpc = () => {
     'settings:update-order-protection-password',
     'settings:update-pdf-output-dir',
     'reports:summary',
+    'reports:inventory-general',
     'backup:connect-drive',
     'backup:upload-drive',
     'backup:list'
@@ -293,6 +306,20 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'settings:get-invoice-show-barcode-enabled',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getInvoiceShowBarcodeEnabled()
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-invoice-show-barcode-enabled',
+    wrap(async (enabled: boolean) =>
+      createSettingsService(await databaseManager.getDb()).updateInvoiceShowBarcodeEnabled(Boolean(enabled))
+    )
+  );
+
+  ipcMain.handle(
     'settings:get-pdf-output-dir',
     wrap(async () =>
       createSettingsService(await databaseManager.getDb()).getPdfOutputDir()
@@ -353,6 +380,13 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'reports:inventory-general',
+    wrap(async (from?: string, to?: string) =>
+      createReportsService(await databaseManager.getDb()).inventoryGeneral(from, to)
+    )
+  );
+
+  ipcMain.handle(
     'printers:list',
     wrap(async () => printerService.listPrinters())
   );
@@ -405,6 +439,71 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle('app:health', wrap(async () => databaseManager.healthCheck()));
+
+  ipcMain.handle(
+    'app:version-info',
+    wrap(async () => {
+      const db = await databaseManager.getDb().catch(() => null);
+      let appliedMigrations: string[] = [];
+      let snapshotHasObservations = false;
+
+      if (db) {
+        try {
+          const migrations = await db
+            .selectFrom('schema_migrations')
+            .select(['name'])
+            .orderBy('name')
+            .execute();
+          appliedMigrations = migrations.map((row) => String(row.name));
+        } catch {
+          // schema_migrations puede no existir en la primera ejecución.
+        }
+
+        try {
+          const columns = await import('kysely').then(({ sql }) =>
+            sql<{ column_name: string }>`
+              SELECT COLUMN_NAME AS column_name
+              FROM information_schema.columns
+              WHERE table_schema = DATABASE()
+                AND table_name = 'invoice_items_snapshot'
+                AND column_name IN ('customer_observations', 'internal_observations')
+            `.execute(db)
+          );
+          snapshotHasObservations = columns.rows.length === 2;
+        } catch {
+          snapshotHasObservations = false;
+        }
+      }
+
+      return {
+        version: app.getVersion(),
+        isPackaged: app.isPackaged,
+        logPath: diagnosticLogger.getCurrentLogPath(),
+        logDir: diagnosticLogger.getLogDir(),
+        appliedMigrations,
+        snapshotHasObservations
+      };
+    })
+  );
+
+  ipcMain.handle(
+    'app:check-for-updates',
+    wrap(async () => checkForUpdates('manual'))
+  );
+
+  ipcMain.handle(
+    'app:update-status',
+    wrap(async () => ({
+      status: getCurrentAutoUpdateStatus(),
+      currentVersion: app.getVersion(),
+      logPath: getAutoUpdateLogPath()
+    }))
+  );
+
+  ipcMain.handle(
+    'app:install-update',
+    wrap(async () => ({ launched: installDownloadedUpdate() }))
+  );
 
   ipcMain.handle(
     'app:restart',
@@ -617,8 +716,22 @@ export const registerIpc = () => {
 
   ipcMain.handle(
     'clients:create',
-    wrap(async (input: ClientInput) =>
+    wrap(async (input: ClientInput & { force?: boolean }) =>
       createClientsService(await databaseManager.getDb()).create(input)
+    )
+  );
+
+  ipcMain.handle(
+    'clients:find-similar',
+    wrap(async (input: { firstName: string; lastName: string; phone: string; excludeId?: number }) =>
+      createClientsService(await databaseManager.getDb()).findSimilar(input)
+    )
+  );
+
+  ipcMain.handle(
+    'clients:merge',
+    wrap(async (primaryId: number, duplicateId: number) =>
+      createClientsService(await databaseManager.getDb()).merge(primaryId, duplicateId)
     )
   );
 
@@ -639,6 +752,13 @@ export const registerIpc = () => {
   ipcMain.handle(
     'orders:list',
     wrap(async () => createOrdersService(await databaseManager.getDb()).list())
+  );
+
+  ipcMain.handle(
+    'orders:list-page',
+    wrap(async (params: OrdersListParams) =>
+      createOrdersService(await databaseManager.getDb()).listPage(params ?? {})
+    )
   );
 
   ipcMain.handle(
@@ -715,6 +835,13 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'payments:void',
+    wrap(async (input: VoidPaymentInput) =>
+      createPaymentsService(await databaseManager.getDb()).voidPayment(input)
+    )
+  );
+
+  ipcMain.handle(
     'invoices:list',
     wrap(async () => createInvoicesService(await databaseManager.getDb()).list())
   );
@@ -737,6 +864,13 @@ export const registerIpc = () => {
     'invoices:create-from-order',
     wrap(async (orderId: number) =>
       createInvoicesService(await databaseManager.getDb()).createFromOrder(orderId)
+    )
+  );
+
+  ipcMain.handle(
+    'invoices:update-notes',
+    wrap(async (orderId: number, notes: string | null) =>
+      createInvoicesService(await databaseManager.getDb()).updateNotes(orderId, notes)
     )
   );
 
@@ -767,6 +901,27 @@ export const registerIpc = () => {
     'cash:closure-detail',
     wrap(async (closureId: number) =>
       createCashService(await databaseManager.getDb()).getClosureDetail(closureId)
+    )
+  );
+
+  ipcMain.handle(
+    'cash:movement',
+    wrap(async (input: { type: 'CASH_IN' | 'CASH_OUT'; amount: number; notes?: string | null }) =>
+      createCashService(await databaseManager.getDb()).addMovement(input)
+    )
+  );
+
+  ipcMain.handle(
+    'cash:movements',
+    wrap(async (args?: { sessionId?: number | null; limit?: number; offset?: number }) =>
+      createCashService(await databaseManager.getDb()).listMovements(args)
+    )
+  );
+
+  ipcMain.handle(
+    'cash:closures',
+    wrap(async (filter?: { from?: string | null; to?: string | null; limit?: number; offset?: number }) =>
+      createCashService(await databaseManager.getDb()).listClosures(filter)
     )
   );
 

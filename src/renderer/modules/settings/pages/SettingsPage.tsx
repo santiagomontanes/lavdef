@@ -64,6 +64,12 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     enabled: unlocked
   });
 
+  const { data: invoiceShowBarcodeEnabled = true } = useQuery({
+    queryKey: ['invoice-show-barcode-enabled'],
+    queryFn: api.getInvoiceShowBarcodeEnabled,
+    enabled: unlocked
+  });
+
   const { data: orderQuantityDecimalsEnabled = false } = useQuery({
     queryKey: ['order-quantity-decimals-enabled'],
     queryFn: api.getOrderQuantityDecimalsEnabled,
@@ -142,6 +148,13 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     mutationFn: api.updateInvoiceShowAllActiveOrdersEnabled,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['invoice-show-all-active-orders-enabled'] });
+    }
+  });
+
+  const updateInvoiceShowBarcodeMutation = useMutation({
+    mutationFn: api.updateInvoiceShowBarcodeEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['invoice-show-barcode-enabled'] });
     }
   });
 
@@ -531,6 +544,34 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         {updateInvoiceActiveOrdersModeMutation.isSuccess && (
           <p style={{ margin: 0, color: 'green' }}>
             Preferencia de visualización de facturas actualizada correctamente.
+          </p>
+        )}
+
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={invoiceShowBarcodeEnabled}
+            onChange={(e) => updateInvoiceShowBarcodeMutation.mutate(e.target.checked)}
+            disabled={updateInvoiceShowBarcodeMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Mostrar el código de barras en la factura</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Si se desactiva, la factura no imprime el código de barras y se ahorra espacio de papel.
+            </p>
+          </div>
+        </label>
+
+        {updateInvoiceShowBarcodeMutation.isError && (
+          <p className="error-text">
+            {(updateInvoiceShowBarcodeMutation.error as Error).message}
+          </p>
+        )}
+
+        {updateInvoiceShowBarcodeMutation.isSuccess && (
+          <p style={{ margin: 0, color: 'green' }}>
+            Preferencia del código de barras actualizada correctamente.
           </p>
         )}
 

@@ -61,6 +61,16 @@ export const AppShell = ({
     queryFn: api.companySettings
   });
 
+  // Info de versión y diagnóstico. Visible en el sidebar para que el
+  // cliente pueda confirmar cuál EXE está corriendo sin abrir DevTools.
+  const { data: versionInfo } = useQuery({
+    queryKey: ['app-version-info'],
+    queryFn: api.getVersionInfo,
+    staleTime: 60 * 1000
+  });
+
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(searchText.trim());
@@ -159,8 +169,137 @@ export const AppShell = ({
           >
             Cerrar sesión
           </button>
+          <button
+            type="button"
+            onClick={() => setDiagnosticsOpen(true)}
+            title="Ver versión y diagnóstico de la app"
+            style={{
+              marginTop: 8,
+              background: 'transparent',
+              border: '1px dashed rgba(0,0,0,0.18)',
+              borderRadius: 6,
+              padding: '6px 8px',
+              fontSize: 11,
+              color: 'var(--color-muted, #6b7280)',
+              cursor: 'pointer',
+              textAlign: 'center',
+              lineHeight: 1.3
+            }}
+          >
+            {versionInfo ? (
+              <>
+                <div style={{ fontWeight: 700 }}>v{versionInfo.version}</div>
+                <div style={{ fontSize: 10 }}>
+                  {versionInfo.isPackaged ? 'Build instalado' : 'Modo desarrollo'} · Ver diagnóstico
+                </div>
+              </>
+            ) : (
+              <div>Versión: cargando…</div>
+            )}
+          </button>
         </div>
       </aside>
+
+      {diagnosticsOpen && versionInfo ? (
+        <div
+          className="no-print"
+          onClick={() => setDiagnosticsOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            zIndex: 3000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 10,
+              maxWidth: 560,
+              width: '100%',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: 20,
+              boxShadow: '0 18px 48px rgba(0,0,0,0.24)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Diagnóstico de la app</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
+                  Información útil para soporte. Comparta una captura si reporta un problema.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiagnosticsOpen(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <dl style={{ display: 'grid', gridTemplateColumns: '160px 1fr', rowGap: 8, columnGap: 12, fontSize: 13 }}>
+              <dt style={{ color: '#6b7280' }}>Versión</dt>
+              <dd style={{ margin: 0, fontWeight: 700 }}>v{versionInfo.version}</dd>
+
+              <dt style={{ color: '#6b7280' }}>Modo</dt>
+              <dd style={{ margin: 0 }}>{versionInfo.isPackaged ? 'EXE instalado' : 'Desarrollo'}</dd>
+
+              <dt style={{ color: '#6b7280' }}>Observaciones en factura</dt>
+              <dd style={{ margin: 0, color: versionInfo.snapshotHasObservations ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+                {versionInfo.snapshotHasObservations
+                  ? 'OK – columnas presentes'
+                  : 'FALTAN – snapshot no tiene customer/internal_observations'}
+              </dd>
+
+              <dt style={{ color: '#6b7280' }}>Migraciones aplicadas</dt>
+              <dd style={{ margin: 0 }}>{versionInfo.appliedMigrations.length}</dd>
+
+              <dt style={{ color: '#6b7280' }}>Última migración</dt>
+              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 12 }}>
+                {versionInfo.appliedMigrations[versionInfo.appliedMigrations.length - 1] ?? '—'}
+              </dd>
+
+              <dt style={{ color: '#6b7280' }}>Log del día</dt>
+              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                {versionInfo.logPath ?? 'No disponible'}
+              </dd>
+
+              <dt style={{ color: '#6b7280' }}>Carpeta de logs</dt>
+              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                {versionInfo.logDir ?? 'No disponible'}
+              </dd>
+            </dl>
+
+            <details style={{ marginTop: 16 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13 }}>
+                Ver lista completa de migraciones aplicadas
+              </summary>
+              <pre
+                style={{
+                  marginTop: 8,
+                  background: '#f3f4f6',
+                  padding: 10,
+                  borderRadius: 6,
+                  fontSize: 11,
+                  maxHeight: 200,
+                  overflow: 'auto'
+                }}
+              >
+                {versionInfo.appliedMigrations.length > 0
+                  ? versionInfo.appliedMigrations.join('\n')
+                  : 'Aún no se han registrado migraciones.'}
+              </pre>
+            </details>
+          </div>
+        </div>
+      ) : null}
 
       <div className="content-shell">
         <header className="topbar">
@@ -290,6 +429,7 @@ export const AppShell = ({
       {notifOpen && (
         <div
           ref={drawerRef}
+          className="no-print"
           style={{
             position: 'fixed',
             top: 0,

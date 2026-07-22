@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@renderer/services/api';
@@ -7,6 +7,14 @@ import type { OrderDetail, OrderInput } from '@shared/types';
 import { OrderForm } from '../components/OrderForm';
 
 const ORDER_DRAFT_STORAGE_KEY = 'lavasuite:new-order-draft';
+
+// Genera una llave aleatoria por intento de orden. El navegador de
+// Electron soporta crypto.randomUUID (Chromium >= 92); si por alguna
+// razón no estuviera disponible, se cae a un fallback igualmente único.
+const generateIdempotencyKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `ord-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const normalizePhone = (raw?: string | null) => {
   const digits = String(raw ?? '').replace(/\D/g, '');
@@ -92,6 +100,13 @@ export const NewOrderPage = () => {
   const [pendingWaUrl, setPendingWaUrl] = useState<string | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<number | null>(null);
 
+  // Se genera una sola vez por "inicio de orden nueva": al montar esta
+  // página (navegar a /ordenes/nueva) y se renueva explícitamente al
+  // terminar con éxito. Un doble clic en "Guardar orden" reutiliza la
+  // MISMA llave para ambos intentos, así que el backend responde con la
+  // misma orden en vez de crear una segunda.
+  const idempotencyKeyRef = useRef(generateIdempotencyKey());
+
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(ORDER_DRAFT_STORAGE_KEY);
@@ -156,10 +171,25 @@ export const NewOrderPage = () => {
   };
 
   const mutation = useMutation({
-    mutationFn: api.createOrder,
+    mutationFn: (value: OrderInput) =>
+      api.createOrder({ ...value, idempotencyKey: idempotencyKeyRef.current }),
+    // Un reintento automático de React Query volvería a llamar
+    // mutationFn con la MISMA idempotencyKey, así que en teoría sería
+    // inofensivo — pero preferimos que cualquier error de red sea
+    // visible al usuario en vez de reintentarse en silencio.
+    retry: false,
     onSuccess: async (order) => {
       window.localStorage.removeItem(ORDER_DRAFT_STORAGE_KEY);
+      // La orden se creó correctamente: la llave ya se usó, se renueva
+      // para que un futuro intento (si el usuario vuelve a esta misma
+      // instancia de página) no choque con esta orden ya creada.
+      idempotencyKeyRef.current = generateIdempotencyKey();
+
+      await queryClient.invalidateQueries({ queryKey: ['order-detail', order.id] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoice-from-order', order.id] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       await queryClient.invalidateQueries({ queryKey: ['payments'] });
       await queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
@@ -197,6 +227,7 @@ export const NewOrderPage = () => {
             window.localStorage.setItem(ORDER_DRAFT_STORAGE_KEY, JSON.stringify(value));
           }}
           onSubmit={(value) => mutation.mutate(value)}
+          isSubmitting={mutation.isPending}
         />
         {mutation.isError && (
           <p className="error-text">{(mutation.error as Error).message}</p>

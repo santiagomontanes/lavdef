@@ -1,13 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
-import type { MessageBoxOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification } from 'electron'
 import path from 'node:path'
 import { registerIpc } from './ipc/register'
-import { autoUpdater } from 'electron-updater'
 import { syncUserPreferences } from './services/telemetry'
 import { databaseManager } from './services/database-manager'
 import { appPreferences } from './services/app-preferences'
 import { reconcileOrderStates } from '../backend/modules/orders/reconcile-service'
 import { createReadyQueueService } from '../backend/modules/ready-queue/service'
+import { setupAutoUpdater, startAutoUpdateLoop } from './services/auto-updater-service'
+import { diagnosticLogger } from './services/diagnostic-logger'
 
 const isDev = !app.isPackaged
 const disableGpuRenderingOnStartup = appPreferences.getDisableGpuRenderingOnStartup()
@@ -18,13 +18,17 @@ if (disableGpuRenderingOnStartup) {
   app.commandLine.appendSwitch('disable-gpu')
   app.commandLine.appendSwitch('disable-gpu-compositing')
   app.commandLine.appendSwitch('disable-gpu-process-crash-limit')
+  app.commandLine.appendSwitch('disable-accelerated-2d-canvas')
+  app.commandLine.appendSwitch('disable-accelerated-video-decode')
+  app.commandLine.appendSwitch('disable-accelerated-video-encode')
+  app.commandLine.appendSwitch('disable-webgl')
+  app.commandLine.appendSwitch('disable-webgl2')
   app.commandLine.appendSwitch('disable-features', 'VizDisplayCompositor')
   app.commandLine.appendSwitch('use-gl', 'swiftshader')
   app.commandLine.appendSwitch('in-process-gpu')
 }
 
 let mainWindow: BrowserWindow | null = null
-let updatePromptOpen = false
 
 // Track which date we last sent the due-tomorrow notification to avoid spamming
 let lastDueTomorrowDate = ''
@@ -77,7 +81,19 @@ const createWindow = async () => {
 const runReconcile = async () => {
   try {
     const db = await databaseManager.getDb()
+    const reconcileStartedAt = Date.now()
     const { dueTomorrow, companyName, autoProcessedCount } = await reconcileOrderStates(db)
+    const reconcileDurationMs = Date.now() - reconcileStartedAt
+    diagnosticLogger.info('orders.reconcile', 'Reconciliación de estados ejecutada', {
+      durationMs: reconcileDurationMs,
+      autoProcessedCount,
+      dueTomorrowCount: dueTomorrow.length
+    })
+    if (reconcileDurationMs > 1000) {
+      diagnosticLogger.warn('orders.reconcile', 'Reconciliación de estados lenta', {
+        durationMs: reconcileDurationMs
+      })
+    }
 
     // OS notification for due-tomorrow: once per Colombia-day only
     if (dueTomorrow.length > 0) {
@@ -133,38 +149,6 @@ const runReconcile = async () => {
   }
 }
 
-const promptForDownloadedUpdate = async () => {
-  if (updatePromptOpen) return
-
-  updatePromptOpen = true
-
-  try {
-    const dialogOptions: MessageBoxOptions = {
-      type: 'info',
-      buttons: ['Instalar ahora', 'Más tarde'],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-      title: 'Actualización lista',
-      message: 'Hay una actualización descargada y lista para instalar.',
-      detail: 'Si eliges "Más tarde", podrás seguir usando el programa sin que esta actualización te afecte ahora.'
-    }
-    const result =
-      mainWindow && !mainWindow.isDestroyed()
-        ? await dialog.showMessageBox(mainWindow, dialogOptions)
-        : await dialog.showMessageBox(dialogOptions)
-
-    if (result.response === 0) {
-      autoUpdater.quitAndInstall()
-      return
-    }
-
-    console.log('El usuario decidió posponer la instalación de la actualización.')
-  } finally {
-    updatePromptOpen = false
-  }
-}
-
 ipcMain.handle('orders:trigger-reconcile', async () => {
   await runReconcile()
 })
@@ -172,6 +156,15 @@ ipcMain.handle('orders:trigger-reconcile', async () => {
 app.whenReady().then(async () => {
   registerIpc()
   await createWindow()
+
+  // El autoUpdater debe configurarse después de crear la ventana porque
+  // emite eventos al renderer. Los listeners se registran ANTES de la
+  // primera verificación (startAutoUpdateLoop dispara checkForUpdates con
+  // delay de 5 s) — esto corrige el bug de listeners tardíos.
+  if (mainWindow) {
+    setupAutoUpdater(mainWindow)
+    startAutoUpdateLoop()
+  }
 
   const runDailyQueueSetup = async () => {
     try {
@@ -216,27 +209,6 @@ app.whenReady().then(async () => {
   setInterval(() => {
     syncUserPreferences().catch(console.error)
   }, 24 * 60 * 60 * 1000)
-
-  if (!isDev) {
-    try {
-      autoUpdater.checkForUpdatesAndNotify()
-
-      autoUpdater.on('update-available', () => {
-        console.log('Nueva actualización disponible')
-      })
-
-      autoUpdater.on('update-downloaded', () => {
-        console.log('Actualización descargada y pendiente de confirmación del usuario.')
-        void promptForDownloadedUpdate()
-      })
-
-      autoUpdater.on('error', (err) => {
-        console.error('Error en autoUpdater:', err)
-      })
-    } catch (error) {
-      console.error('Error iniciando autoUpdater:', error)
-    }
-  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

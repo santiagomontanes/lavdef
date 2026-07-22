@@ -142,6 +142,32 @@ export type ClientInput = {
   notes: string | null;
 };
 
+export type SimilarClientMatch = {
+  id: number;
+  code: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  matchedBy: 'phone' | 'name' | 'both';
+};
+
+export type ClientMergeResult = {
+  primary: Client;
+  movedCounts: {
+    orders: number;
+    invoices: number;
+    payments: number;
+    deliveries: number;
+    measurements: number;
+    notifications: number;
+  };
+  removedClient: {
+    id: number;
+    code: string;
+    name: string;
+  };
+};
+
 export type OrderStatus = {
   id: number;
   code: string;
@@ -201,6 +227,9 @@ export type Order = {
   balanceDue: number;
   dueDate: string | null;
   createdAt: string;
+  isManual: boolean;
+  manualOrderNumber: string | null;
+  manualOrderDate: string | null;
 };
 
 export type OrderInput = {
@@ -211,6 +240,30 @@ export type OrderInput = {
   discountReason: string | null;
   initialPaymentLines: PaymentLineInput[];
   items: OrderItemInput[];
+  isManual?: boolean;
+  manualOrderNumber?: string | null;
+  manualOrderDate?: string | null;
+  /**
+   * Llave aleatoria generada por intento de envío en el formulario de
+   * creación. Si el backend ya tiene una orden con esta llave, la
+   * devuelve tal cual en vez de crear una nueva (protección contra
+   * doble clic / múltiples envíos).
+   */
+  idempotencyKey?: string | null;
+};
+
+export type OrdersListParams = {
+  page?: number;
+  pageSize?: number;
+  status?: number | 'ALL' | null;
+  search?: string | null;
+};
+
+export type OrdersListPageResult = {
+  rows: Order[];
+  total: number;
+  page: number;
+  pageSize: number;
 };
 
 export type InventoryOrderItem = { description: string; quantity: number };
@@ -255,6 +308,11 @@ export type Payment = {
   amount: number;
   reference: string | null;
   notes: string | null;
+  status: string;
+  isVoided: boolean;
+  voidedAt: string | null;
+  voidedBy: number | null;
+  voidReason: string | null;
   createdAt: string;
 };
 
@@ -264,6 +322,7 @@ export type PaymentInput = {
   amount: number;
   reference: string | null;
   notes?: string | null;
+  idempotencyKey?: string | null;
 };
 
 export type AuditEntry = {
@@ -293,6 +352,13 @@ export type BatchPaymentInput = {
   orderId: number;
   lines: PaymentLineInput[];
   notes?: string | null;
+  idempotencyKey?: string | null;
+};
+
+export type VoidPaymentInput = {
+  paymentId: number;
+  adminPassword: string;
+  reason: string;
 };
 
 export type Invoice = {
@@ -301,8 +367,10 @@ export type Invoice = {
   orderId: number;
   orderNumber: string;
   clientId: number;
+  clientCode: string | null;
   clientName: string;
   clientPhone: string | null;
+  clientAddress: string | null;
   subtotal: number;
   taxTotal: number;
   total: number;
@@ -311,6 +379,11 @@ export type Invoice = {
   notes: string | null;
   paidTotal: number;
   balanceDue: number;
+  statusCode: string | null;
+  statusName: string | null;
+  isManual: boolean;
+  manualOrderNumber: string | null;
+  manualOrderDate: string | null;
   ticketCode: string;
   companyName: string | null;
   companyLegalName: string | null;
@@ -386,6 +459,19 @@ export type InvoiceDetail = Invoice & {
     dueDate: string | null;
     itemsCount: number;
   }>;
+  payments: Array<{
+    id: number;
+    amount: number;
+    methodName: string;
+    reference: string | null;
+    notes: string | null;
+    receivedBy: string | null;
+    status: string;
+    isVoided: boolean;
+    voidedAt: string | null;
+    voidReason: string | null;
+    createdAt: string;
+  }>;
   generatedBy: string | null;
   softwareName: string;
   whatsappMessage: string;
@@ -400,6 +486,8 @@ export type DeliveryRecord = {
   receiverPhone: string | null;
   relationshipToClient: string | null;
   receiverSignature: string | null;
+  deliveryType: 'COMPLETE' | 'PARTIAL';
+  pendingDeliveryNotes: string | null;
   outstandingBalance: number;
   ticketCode: string;
   createdAt: string;
@@ -412,6 +500,8 @@ export type DeliveryInput = {
   receiverPhone: string | null;
   relationshipToClient: string | null;
   receiverSignature: string | null;
+  deliveryType: 'COMPLETE' | 'PARTIAL';
+  pendingDeliveryNotes: string | null;
   ticketCode: string;
 };
 
@@ -431,6 +521,7 @@ export type CashCloseResult = {
   openingAmount: number;
   declaredAmount: number;
   systemAmount: number;
+  cashOnlyAmount: number;
   differenceAmount: number;
   closedAt?: string;
   cashierName?: string;
@@ -449,6 +540,9 @@ export type CashCloseResult = {
     methodName: string;
     amount: number;
   }>;
+  manualCashIn?: number;
+  manualCashOut?: number;
+  cashRefunds?: number;
   deliveredOrders?: Array<{
     orderId: number;
     orderNumber: string;
@@ -468,6 +562,17 @@ export type CashCloseResult = {
     reference: string | null;
     createdAt: string;
   }>;
+  voidedPayments?: Array<{
+    id: number;
+    orderId: number;
+    orderNumber: string;
+    clientName: string;
+    amount: number;
+    paymentMethodName: string;
+    reference: string | null;
+    reason: string | null;
+    voidedAt: string | null;
+  }>;
 };
 
 export type CashClosureListItem = {
@@ -477,6 +582,31 @@ export type CashClosureListItem = {
   systemAmount: number;
   differenceAmount: number;
   closedAt: string;
+};
+
+export type CashMovementType = 'CASH_IN' | 'CASH_OUT';
+
+export type CashMovementInput = {
+  type: CashMovementType;
+  amount: number;
+  notes?: string | null;
+};
+
+export type CashMovementListItem = {
+  id: number;
+  cashSessionId: number;
+  movementType: string;
+  amount: number;
+  notes: string | null;
+  createdAt: string;
+  createdBy: number | null;
+};
+
+export type CashClosureFilter = {
+  from?: string | null;
+  to?: string | null;
+  limit?: number;
+  offset?: number;
 };
 
 export type CashSessionSummary = {
@@ -490,6 +620,10 @@ export type CashSessionSummary = {
   } | null;
   suggestedOpeningAmount: number;
   systemAmount: number;
+  cashOnlyAmount: number;
+  manualCashIn: number;
+  manualCashOut: number;
+  cashRefunds: number;
   lastClosure: {
     id: number;
     cashSessionId: number;
@@ -508,6 +642,17 @@ export type CashSessionSummary = {
     amount: number;
     notes: string | null;
     createdAt: string;
+  }>;
+  voidedPayments?: Array<{
+    id: number;
+    orderId: number;
+    orderNumber: string;
+    clientName: string;
+    amount: number;
+    paymentMethodName: string;
+    reference: string | null;
+    reason: string | null;
+    voidedAt: string | null;
   }>;
 };
 
@@ -688,6 +833,7 @@ export type ReportsSummary = {
   totalSales: number;
   totalExpenses: number;
   totalPaymentOut: number;
+  totalVoidedPayments: number;
   netUtility: number;
   totalPayments: number;
   totalOrders: number;
@@ -695,6 +841,11 @@ export type ReportsSummary = {
   warrantiesClosed: number;
   openWarranties: number;
   paymentMethods: Array<{
+    methodName: string;
+    amount: number;
+    count: number;
+  }>;
+  voidedPaymentMethods: Array<{
     methodName: string;
     amount: number;
     count: number;
@@ -727,4 +878,36 @@ export type ReportsSummary = {
     categoryName: string;
     amount: number;
   }>;
+  piecesEntered: number;
+  ordersDelivered: number;
+  ordersCanceled: number;
+  outstandingBalance: number;
+  manualOrders: number;
+  digitalOrders: number;
+  topRevenueDay: { date: string; amount: number } | null;
+  lowestRevenueDay: { date: string; amount: number } | null;
+  topExpenseDay: { date: string; amount: number } | null;
+};
+
+export type InventoryGeneralRow = {
+  orderId: number;
+  orderNumber: string;
+  isManual: boolean;
+  manualOrderNumber: string | null;
+  createdAt: string;
+  clientName: string;
+  pieces: number;
+  total: number;
+  statusCode: string | null;
+};
+
+export type InventoryGeneralReport = {
+  from: string;
+  to: string;
+  rows: InventoryGeneralRow[];
+  totals: {
+    totalOrders: number;
+    totalPieces: number;
+    totalValue: number;
+  };
 };

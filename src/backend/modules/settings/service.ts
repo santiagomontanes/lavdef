@@ -1,10 +1,11 @@
-import type { Kysely } from 'kysely';
+﻿import type { Kysely } from 'kysely';
 import type { Database } from '../../db/schema.js';
 import type { CompanySettings } from '../../../shared/types.js';
 
 const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
 const INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY = 'invoice_show_all_active_orders';
 const ORDER_QUANTITY_DECIMALS_ENABLED_KEY = 'order_quantity_decimals_enabled';
+const INVOICE_SHOW_BARCODE_KEY = 'invoice_show_barcode';
 
 export const createSettingsService = (db: Kysely<Database>) => ({
   async getCompanySettings(): Promise<CompanySettings | null> {
@@ -83,7 +84,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', 'order_protection_password')
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     return setting ? String(setting.setting_value ?? '').trim() : null;
@@ -114,7 +115,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['id', 'setting_value'])
       .where('setting_key', '=', 'order_protection_password')
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!existing) {
@@ -153,7 +154,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', 'pdf_output_dir')
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     return setting ? String(setting.setting_value ?? '').trim() || null : null;
@@ -165,7 +166,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['id'])
       .where('setting_key', '=', 'pdf_output_dir')
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (existing) {
@@ -192,7 +193,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!setting) return true;
@@ -207,7 +208,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['id'])
       .where('setting_key', '=', AUTO_READY_BY_DUE_DATE_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (existing) {
@@ -234,7 +235,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!setting) return true;
@@ -251,7 +252,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['id'])
       .where('setting_key', '=', INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (existing) {
@@ -278,7 +279,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['setting_value'])
       .where('setting_key', '=', ORDER_QUANTITY_DECIMALS_ENABLED_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (!setting) return false;
@@ -295,7 +296,7 @@ export const createSettingsService = (db: Kysely<Database>) => ({
       .selectFrom('app_settings')
       .select(['id'])
       .where('setting_key', '=', ORDER_QUANTITY_DECIMALS_ENABLED_KEY)
-      .orderBy('id desc')
+      .orderBy('id', 'desc')
       .executeTakeFirst();
 
     if (existing) {
@@ -309,6 +310,50 @@ export const createSettingsService = (db: Kysely<Database>) => ({
         .insertInto('app_settings')
         .values({
           setting_key: ORDER_QUANTITY_DECIMALS_ENABLED_KEY,
+          setting_value: normalized
+        })
+        .execute();
+    }
+
+    return { success: true, enabled };
+  },
+
+  async getInvoiceShowBarcodeEnabled(): Promise<boolean> {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', INVOICE_SHOW_BARCODE_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    if (!setting) return true;
+
+    const normalized = String(setting.setting_value ?? '').trim().toLowerCase();
+    return normalized !== '0' && normalized !== 'false';
+  },
+
+  async updateInvoiceShowBarcodeEnabled(
+    enabled: boolean
+  ): Promise<{ success: true; enabled: boolean }> {
+    const normalized = enabled ? '1' : '0';
+    const existing = await db
+      .selectFrom('app_settings')
+      .select(['id'])
+      .where('setting_key', '=', INVOICE_SHOW_BARCODE_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    if (existing) {
+      await db
+        .updateTable('app_settings')
+        .set({ setting_value: normalized })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await db
+        .insertInto('app_settings')
+        .values({
+          setting_key: INVOICE_SHOW_BARCODE_KEY,
           setting_value: normalized
         })
         .execute();

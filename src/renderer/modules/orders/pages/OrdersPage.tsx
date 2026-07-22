@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '@renderer/services/api';
 import { DataTable, Input, Modal, PageHeader, StatusChip } from '@renderer/ui/components';
 import { currency, dateTime } from '@renderer/utils/format';
 import { normalizeScan } from '@renderer/utils/normalize';
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const normalizePhone = (raw?: string | null) => {
   const digits = String(raw ?? '').replace(/\D/g, '');
@@ -59,33 +62,6 @@ const buildReadyMessage = ({
   );
 };
 
-// CREATED first (newest), then active states, then terminal
-const STATUS_SORT_PRIORITY: Record<string, number> = {
-  CREATED: 1,
-  IN_PROGRESS: 2,
-  RECEIVED: 3,
-  READY: 4,
-  READY_FOR_DELIVERY: 5,
-  WARRANTY: 6,
-  DELIVERED: 90,
-  CANCELLED: 95,
-  CANCELED: 95,
-  CANCELADO: 95
-};
-
-const getPriorityByName = (name: string): number => {
-  const n = name.toUpperCase();
-  if (n.includes('CREA')) return 1;
-  if (n.includes('PROCESO') || n.includes('PROGRESS')) return 2;
-  if (n.includes('RECIB')) return 3;
-  if (n === 'LISTA' || n === 'READY') return 4;
-  if (n.includes('ENTREGAR') || n.includes('DELIVERY')) return 5;
-  if (n.includes('GARANT')) return 6;
-  if (n === 'ENTREGADA' || n === 'DELIVERED') return 90;
-  if (n.includes('CANCEL')) return 95;
-  return 50;
-};
-
 const TERMINAL = new Set(['CANCELLED', 'CANCELED', 'CANCELADO']);
 
 const validNextStatuses = (
@@ -108,7 +84,8 @@ export const OrdersPage = () => {
 
   const [statusFilter, setStatusFilter] = useState<number | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
-  const [pendingScan, setPendingScan] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const [passwordModal, setPasswordModal] = useState(false);
   const [password, setPassword] = useState('');
@@ -121,10 +98,38 @@ export const OrdersPage = () => {
     return text;
   };
 
-  const { data: orders = [] } = useQuery({
-    queryKey: ['orders'],
-    queryFn: api.listOrders
+  // Debounce del buscador: espera a que el usuario deje de escribir (o
+  // termine de escanear un código) antes de golpear el backend.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(normalizeScannedCode(search));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Cualquier cambio de filtro o búsqueda vuelve a la primera página.
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
+
+  const {
+    data: ordersPage,
+    isFetching: isFetchingOrders
+  } = useQuery({
+    queryKey: ['orders-page', page, PAGE_SIZE, statusFilter, debouncedSearch],
+    queryFn: () =>
+      api.listOrdersPage({
+        page,
+        pageSize: PAGE_SIZE,
+        status: statusFilter,
+        search: debouncedSearch || null
+      }),
+    placeholderData: keepPreviousData
   });
+
+  const orders = ordersPage?.rows ?? [];
+  const total = ordersPage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
@@ -152,24 +157,8 @@ export const OrdersPage = () => {
       const selectedStatus = catalogs?.statuses?.find((status) => status.id === statusId);
       const selectedOrder = orders.find((order) => order.id === orderId);
 
-      if (selectedStatus) {
-        queryClient.setQueryData(['orders'], (old: any) => {
-          if (!Array.isArray(old)) return old;
-          return old.map((order: any) =>
-            order.id === orderId
-              ? {
-                  ...order,
-                  statusId: selectedStatus.id,
-                  statusCode: selectedStatus.code,
-                  statusName: selectedStatus.name,
-                  statusColor: selectedStatus.color
-                }
-              : order
-          );
-        });
-      }
-
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders-page'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       await queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
 
@@ -227,38 +216,18 @@ export const OrdersPage = () => {
     setPasswordModal(true);
   };
 
-  const normalizedSearch = normalizeScannedCode(search);
+  // El filtro de estado y la búsqueda ya se resuelven en SQL (ver
+  // api.listOrdersPage). `orders` es directamente la página actual.
 
-  const filteredOrders = useMemo(() => {
-    const filtered = orders.filter((order) => {
-      const matchesStatus = statusFilter === 'ALL' ? true : order.statusId === statusFilter;
-      if (!matchesStatus) return false;
-      if (!normalizedSearch) return true;
-
-      const orderNumber = normalizeScan(String(order.orderNumber ?? ''));
-      const clientName = normalizeScan(String(order.clientName ?? ''));
-      const statusName = normalizeScan(String(order.statusName ?? ''));
-
-      return (
-        orderNumber.includes(normalizedSearch) ||
-        clientName.includes(normalizedSearch) ||
-        statusName.includes(normalizedSearch)
-      );
-    });
-
-    return filtered.sort((a, b) => {
-      const codeA = String(a.statusCode ?? '').toUpperCase();
-      const codeB = String(b.statusCode ?? '').toUpperCase();
-      const pa = codeA ? (STATUS_SORT_PRIORITY[codeA] ?? getPriorityByName(a.statusName)) : getPriorityByName(a.statusName);
-      const pb = codeB ? (STATUS_SORT_PRIORITY[codeB] ?? getPriorityByName(b.statusName)) : getPriorityByName(b.statusName);
-      if (pa !== pb) return pa - pb;
-      return b.id - a.id;
-    });
-  }, [orders, statusFilter, normalizedSearch]);
-
-  const tryNavigateScan = (normalized: string, orderList: typeof orders) => {
+  // Escaneo de código de barras: primero intenta un match exacto contra
+  // la página cargada (cubre el caso común: la orden escaneada suele
+  // estar entre las más recientes/activas, que es justo lo que muestra
+  // la primera página). Si no aparece ahí, cae a una búsqueda liviana
+  // en el backend (orders:search, ya limitada) para no depender de
+  // tener las 800+ órdenes en memoria del renderer.
+  const tryNavigateLocal = (normalized: string) => {
     if (!normalized) return false;
-    const exactOrder = orderList.find(
+    const exactOrder = orders.find(
       (order) => normalizeScan(String(order.orderNumber ?? '')) === normalized
     );
     if (exactOrder) {
@@ -268,23 +237,31 @@ export const OrdersPage = () => {
     return false;
   };
 
-  // When orders finish loading, retry any scan that arrived before data was ready
   useEffect(() => {
-    if (!pendingScan || orders.length === 0) return;
-    if (tryNavigateScan(pendingScan, orders)) setPendingScan(null);
-  }, [orders, pendingScan]);
+    const normalized = normalizeScannedCode(debouncedSearch);
+    if (!normalized) return;
+    if (tryNavigateLocal(normalized)) return;
+
+    let cancelled = false;
+    api
+      .searchOrders(normalized, 5)
+      .then((results) => {
+        if (cancelled) return;
+        const exact = results.find(
+          (order) => normalizeScan(String(order.orderNumber ?? '')) === normalized
+        );
+        if (exact) navigate(`/ordenes/${exact.id}`);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   const handleSearchChange = (value: string) => {
-    const cleanedInput = normalizeScan(value);
-    setSearch(cleanedInput);
-
-    const normalized = normalizeScannedCode(cleanedInput);
-    if (!normalized) return;
-
-    if (!tryNavigateScan(normalized, orders)) {
-      // Orders not loaded yet — hold the scan and retry when data arrives
-      if (orders.length === 0) setPendingScan(normalized);
-    }
+    setSearch(normalizeScan(value));
   };
 
   return (
@@ -328,12 +305,21 @@ export const OrdersPage = () => {
         </div>
 
         <DataTable
-          rows={filteredOrders}
+          rows={orders}
           columns={[
             {
               key: 'number',
               header: 'Consecutivo',
-              render: (row) => row.orderNumber
+              render: (row) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span>{row.orderNumber}</span>
+                  {row.isManual && row.manualOrderNumber ? (
+                    <small style={{ color: '#92400e', fontWeight: 600 }}>
+                      📝 Manual: {row.manualOrderNumber}
+                    </small>
+                  ) : null}
+                </div>
+              )
             },
             {
               key: 'client',
@@ -397,6 +383,42 @@ export const OrdersPage = () => {
             }
           ]}
         />
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 14,
+            flexWrap: 'wrap',
+            gap: 8
+          }}
+        >
+          <small style={{ color: '#6b7280' }}>
+            {total > 0
+              ? `Página ${page} de ${totalPages} · ${total} orden${total === 1 ? '' : 'es'} en total`
+              : 'Sin órdenes para este filtro.'}
+            {isFetchingOrders ? ' · Actualizando...' : ''}
+          </small>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
       </div>
 
       <Modal

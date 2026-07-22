@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import type { BatchPaymentInput, CatalogsPayload, PaymentLineInput } from '@shared/types';
 import { Button, Input, PriceInput, Select } from '@renderer/ui/components';
@@ -11,14 +12,20 @@ export const PaymentForm = ({
   orderId,
   catalogs,
   balanceDue,
-  onSubmit
+  onSubmit,
+  isSubmitting = false
 }: {
   orderId: number;
   catalogs?: CatalogsPayload;
   balanceDue: number;
   onSubmit: (value: BatchPaymentInput) => void;
+  isSubmitting?: boolean;
 }) => {
   const defaultMethodId = catalogs?.paymentMethods?.[0]?.id ?? 1;
+  const submitLockedRef = useRef(false);
+  const requestIdRef = useRef(
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
 
   const { register, control, handleSubmit, setValue, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
@@ -36,15 +43,22 @@ export const PaymentForm = ({
   const change = Math.max(0, totalEntered - Number(balanceDue || 0));
   const pendingAfter = Math.max(0, Number(balanceDue || 0) - amountApplied);
 
+  useEffect(() => {
+    if (!isSubmitting) submitLockedRef.current = false;
+  }, [isSubmitting]);
+
   return (
     <form
       className="stack-gap"
       onSubmit={handleSubmit((values) => {
+        if (submitLockedRef.current || isSubmitting) return;
         const validLines = values.lines.filter((l) => Number(l.amount || 0) > 0);
         if (validLines.length === 0) return;
+        submitLockedRef.current = true;
 
         onSubmit({
           orderId,
+          idempotencyKey: requestIdRef.current,
           lines: validLines.map((l) => ({
             paymentMethodId: Number(l.paymentMethodId),
             amount: Number(l.amount),
@@ -61,6 +75,7 @@ export const PaymentForm = ({
                 <span>Método de pago</span>
                 <Select
                   {...register(`lines.${index}.paymentMethodId`, { valueAsNumber: true })}
+                  disabled={isSubmitting}
                 >
                   {catalogs?.paymentMethods.map((method) => (
                     <option key={method.id} value={method.id}>
@@ -75,17 +90,22 @@ export const PaymentForm = ({
                 <PriceInput
                   value={lines[index]?.amount ?? 0}
                   onChange={(v) => setValue(`lines.${index}.amount`, v)}
+                  disabled={isSubmitting}
                 />
               </label>
 
               <label>
                 <span>Referencia</span>
-                <Input {...register(`lines.${index}.reference`)} placeholder="Opcional" />
+                <Input
+                  {...register(`lines.${index}.reference`)}
+                  placeholder="Opcional"
+                  disabled={isSubmitting}
+                />
               </label>
 
               {fields.length > 1 && (
                 <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                  <Button type="button" variant="danger" onClick={() => remove(index)}>
+                  <Button type="button" variant="danger" disabled={isSubmitting} onClick={() => remove(index)}>
                     Quitar
                   </Button>
                 </div>
@@ -97,6 +117,7 @@ export const PaymentForm = ({
         <Button
           type="button"
           variant="secondary"
+          disabled={isSubmitting}
           onClick={() =>
             append({ paymentMethodId: defaultMethodId, amount: 0, reference: null })
           }
@@ -129,7 +150,9 @@ export const PaymentForm = ({
       </div>
 
       <div className="form-actions">
-        <Button type="submit">Registrar pago</Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Registrando pago...' : 'Registrar pago'}
+        </Button>
       </div>
     </form>
   );

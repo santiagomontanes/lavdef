@@ -12,6 +12,7 @@ import type {
   LoginInput,
   OrderInput,
   PaymentInput,
+  VoidPaymentInput,
   Service,
   ServiceInput,
   SetupFinalizeInput,
@@ -66,6 +67,7 @@ declare global {
       updateCompanySettings: (input: any) => Promise<any>;
 
       getReportsSummary: (from?: string, to?: string) => Promise<unknown>;
+      getInventoryGeneral: (from?: string, to?: string) => Promise<unknown>;
 
       listWarranties: () => Promise<unknown>;
       listWarrantyStatuses: () => Promise<unknown>;
@@ -118,9 +120,14 @@ declare global {
       onOrdersStatusChanged: (callback: () => void) => () => void;
 
       health: () => Promise<unknown>;
+      getVersionInfo: () => Promise<unknown>;
       runtimeDiagnostics: () => Promise<unknown>;
       restartApp: () => Promise<unknown>;
       quitApp: () => Promise<unknown>;
+      checkForUpdates: () => Promise<unknown>;
+      getUpdateStatus: () => Promise<unknown>;
+      installUpdate: () => Promise<unknown>;
+      onUpdateStatus: (callback: (status: any) => void) => () => void;
       openExternal: (payload: ExternalLinkPayload) => Promise<unknown>;
       printToPdf: (input?: Omit<DesktopPdfInput, 'targetDir' | 'subfolder'>) => Promise<unknown>;
       printToPdfAuto: (input?: DesktopPdfInput) => Promise<unknown>;
@@ -141,11 +148,14 @@ declare global {
 
       listClients: () => Promise<unknown>;
       searchClients: (term: string, limit?: number) => Promise<unknown>;
-      createClient: (input: ClientInput) => Promise<unknown>;
+      createClient: (input: ClientInput & { force?: boolean }) => Promise<unknown>;
       updateClient: (id: number, input: ClientInput) => Promise<unknown>;
       deleteClient: (id: number) => Promise<unknown>;
+      findSimilarClients: (input: { firstName: string; lastName: string; phone: string; excludeId?: number }) => Promise<unknown>;
+      mergeClients: (primaryId: number, duplicateId: number) => Promise<unknown>;
 
       listOrders: () => Promise<unknown>;
+      listOrdersPage: (params?: { page?: number; pageSize?: number; status?: number | 'ALL' | null; search?: string | null }) => Promise<unknown>;
       searchOrders: (term: string, limit?: number) => Promise<unknown>;
       getOrderDetail: (id: number) => Promise<unknown>;
       getOrderCatalogs: () => Promise<unknown>;
@@ -155,11 +165,13 @@ declare global {
       listPayments: (orderId?: number) => Promise<unknown>;
       createPayment: (input: PaymentInput) => Promise<unknown>;
       createPaymentBatch: (input: BatchPaymentInput) => Promise<unknown>;
+      voidPayment: (input: VoidPaymentInput) => Promise<unknown>;
 
       listInvoices: () => Promise<unknown>;
       searchInvoices: (term: string, limit?: number) => Promise<unknown>;
       getInvoiceDetail: (id: number) => Promise<unknown>;
       createInvoiceFromOrder: (orderId: number) => Promise<unknown>;
+      updateInvoiceNotes: (orderId: number, notes: string | null) => Promise<unknown>;
 
       openCashSession: (input: {
   openingAmount?: number;
