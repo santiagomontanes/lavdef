@@ -28,6 +28,9 @@ google-oauth.json
 .vscode/
 .idea/
 
+# claude local settings (contiene permisos/tokens locales, no debe subirse)
+.claude/settings.local.json
+
 # electron builder
 release/
 *.blockmap
