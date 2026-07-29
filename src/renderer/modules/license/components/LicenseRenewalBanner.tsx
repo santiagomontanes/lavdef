@@ -4,9 +4,10 @@ import { api } from '@renderer/services/api';
 type Props = {
   daysLeft: number;
   businessName?: string | null;
+  offline?: boolean;
 };
 
-export const LicenseRenewalBanner = ({ daysLeft, businessName }: Props) => {
+export const LicenseRenewalBanner = ({ daysLeft, businessName, offline }: Props) => {
   const whatsappUrl = `https://wa.me/573043547758?text=${encodeURIComponent(
     `Hola, quiero renovar el plan de ${businessName || 'mi sistema'}. Faltan ${daysLeft} día(s) para el vencimiento de la licencia.`
   )}`;
@@ -41,7 +42,9 @@ export const LicenseRenewalBanner = ({ daysLeft, businessName }: Props) => {
             Tu licencia vence en {daysLeft} día{daysLeft === 1 ? '' : 's'}
           </strong>
           <span style={{ fontSize: 13, color: '#7a5b00' }}>
-            Para evitar interrupciones, te recomendamos renovar el plan con anticipación.
+            {offline
+              ? 'El equipo lleva días sin conexión. Conéctalo a internet para ponerte al día; al vencer, el sistema se bloqueará.'
+              : 'Para evitar interrupciones, te recomendamos renovar el plan con anticipación.'}
           </span>
         </div>
 

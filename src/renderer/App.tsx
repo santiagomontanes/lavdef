@@ -36,6 +36,7 @@ export default function App() {
   const [licenseWarning, setLicenseWarning] = useState(false);
   const [licenseDaysLeft, setLicenseDaysLeft] = useState(0);
   const [licenseBusinessName, setLicenseBusinessName] = useState<string | null>(null);
+  const [licenseOffline, setLicenseOffline] = useState(false);
 
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -93,10 +94,12 @@ export default function App() {
           setLicenseWarning(true);
           setLicenseDaysLeft(Number(result?.daysLeft ?? 0));
           setLicenseBusinessName(result?.businessName ?? null);
+          setLicenseOffline(Boolean(result?.offlineGrace));
         } else {
           setLicenseWarning(false);
           setLicenseDaysLeft(0);
           setLicenseBusinessName(null);
+          setLicenseOffline(false);
         }
       })
       .catch(() => {
@@ -104,6 +107,7 @@ export default function App() {
         setLicenseWarning(false);
         setLicenseDaysLeft(0);
         setLicenseBusinessName(null);
+        setLicenseOffline(false);
       })
       .finally(() => {
         setLicenseReady(true);
@@ -165,6 +169,7 @@ export default function App() {
         <LicenseRenewalBanner
           daysLeft={licenseDaysLeft}
           businessName={licenseBusinessName}
+          offline={licenseOffline}
         />
       )}
 
