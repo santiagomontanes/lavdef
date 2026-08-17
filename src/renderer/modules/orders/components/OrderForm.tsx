@@ -5,6 +5,7 @@ import type { CatalogsPayload, Client, OrderDetail, OrderInput, PaymentLineInput
 import { api } from '@renderer/services/api';
 import { Button, FormSection, Input, PriceInput, Select, Textarea } from '@renderer/ui/components';
 import { currency } from '@renderer/utils/format';
+import { clientMatchesSearch } from '@renderer/utils/clientSearch';
 
 const NOTES_MAX = 400;
 const OBS_MAX = 400;
@@ -350,14 +351,31 @@ export const OrderForm = ({
     );
   };
 
+  const selectedClientId = Number(useWatch({ control, name: 'clientId' }) ?? 0);
+
   const clientOptions = useMemo(() => {
-    const term = clientSearch.trim().toLowerCase();
-    if (!term) return clients;
-    if (searchedClients.length > 0) return searchedClients;
-    return clients.filter((client) =>
-      `${client.firstName} ${client.lastName}`.toLowerCase().includes(term)
-    );
-  }, [clientSearch, searchedClients, clients]);
+    const term = clientSearch.trim();
+    const base = !term
+      ? clients
+      : searchedClients.length > 0
+        ? searchedClients
+        : // Respaldo local con la misma tolerancia que el servidor:
+          // nombre, apellido en cualquier orden, teléfono o código.
+          clients.filter((client) => clientMatchesSearch(client, term));
+
+    if (!selectedClientId || base.some((client) => client.id === selectedClientId)) {
+      return base;
+    }
+
+    // El cliente ya elegido nunca debe salir de la lista al escribir en el
+    // buscador: si su <option> desaparece, la selección se pierde y parece
+    // que el cliente ya no existe.
+    const selected =
+      clients.find((client) => client.id === selectedClientId) ??
+      searchedClients.find((client) => client.id === selectedClientId);
+
+    return selected ? [selected, ...base] : base;
+  }, [clientSearch, searchedClients, clients, selectedClientId]);
 
   const allowDecimalQuantities =
     quantityDecimalsEnabled ||
@@ -464,12 +482,18 @@ export const OrderForm = ({
           <label>
             <span>Buscar cliente</span>
             <Input
-              placeholder="Nombre, apellido o número WhatsApp"
+              placeholder="Nombre, apellido, teléfono o código CLI"
               value={clientSearch}
               onChange={(e) => setClientSearch(e.target.value)}
             />
             {searchingClients ? (
               <small style={{ color: '#6b7280' }}>Buscando clientes...</small>
+            ) : null}
+            {!searchingClients && clientSearch.trim().length >= 2 && clientOptions.length === 0 ? (
+              <small style={{ color: '#b45309' }}>
+                Sin coincidencias. Antes de crear un cliente nuevo, prueba con el teléfono (solo
+                números) o con el código CLI: puede estar registrado con otro nombre.
+              </small>
             ) : null}
           </label>
 

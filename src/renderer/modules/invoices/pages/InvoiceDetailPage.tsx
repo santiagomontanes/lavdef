@@ -27,6 +27,46 @@ const localDateKey = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+type PrintMode = 'both' | 'customer' | 'internal';
+type CopyDocument = 'customer' | 'internal';
+
+type PrintJob = {
+  document: CopyDocument;
+  copyIndex: number;
+  copiesTotal: number;
+};
+
+const COPY_LABEL: Record<CopyDocument, string> = {
+  customer: 'cliente',
+  internal: 'negocio'
+};
+
+const MAX_COPIES = 10;
+
+// Cada copia es un documento distinto: se cambia la clase invoice-mode-*
+// y hay que esperar a que el navegador repinte antes de mandar el trabajo,
+// para que nunca se mezclen las plantillas cliente/negocio.
+const settleDom = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 80);
+      });
+    });
+  });
+
+// Un trabajo por copia y por documento. Nunca se pide copies>1 al driver.
+const buildPrintJobs = (mode: PrintMode, copies: number): PrintJob[] => {
+  const documents: CopyDocument[] = mode === 'both' ? ['customer', 'internal'] : [mode];
+  return documents.flatMap((document) =>
+    Array.from({ length: copies }, (_, index) => ({
+      document,
+      copyIndex: index + 1,
+      copiesTotal: copies
+    }))
+  );
+};
+
 const normalizeBarcode = (value?: string | number | null) =>
   String(value ?? '')
     .replace(/[–—−]/g, '-')
@@ -42,9 +82,22 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
   const queryClient = useQueryClient();
 
   const [runningPdfAction, setRunningPdfAction] = useState(false);
-  const [printMode, setPrintMode] = useState<'both' | 'customer' | 'internal'>('both');
+  const [printMode, setPrintMode] = useState<PrintMode>('both');
+  const [copies, setCopies] = useState(1);
+  const [printProgress, setPrintProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pendingCopies, setPendingCopies] = useState<{
+    mode: PrintMode;
+    jobs: PrintJob[];
+    done: number;
+    total: number;
+  } | null>(null);
   const autoSavedRef = useRef(false);
   const autoPrintedRef = useRef(false);
+  // Guardias síncronas contra el doble clic: setState es asíncrono y no
+  // alcanza para bloquear dos llamadas seguidas. printActionRef cubre toda
+  // la acción (PDF + copias) y printingRef la cola de copias.
+  const printActionRef = useRef(false);
+  const printingRef = useRef(false);
 
   const [notesDraft, setNotesDraft] = useState('');
   const [notesEdited, setNotesEdited] = useState(false);
@@ -82,6 +135,12 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false
+  });
+
+  const { data: forceApplicationCopies = false } = useQuery({
+    queryKey: ['print-force-application-copies-enabled'],
+    queryFn: api.getPrintForceApplicationCopiesEnabled,
+    staleTime: 5 * 60 * 1000
   });
 
   const { data: showBarcode = true } = useQuery({
@@ -177,12 +236,128 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     }
   };
 
-  const handlePrintMode = async (mode: 'both' | 'customer' | 'internal') => {
-    setPrintMode(mode);
-    // Esperar a que React aplique la className antes de imprimir.
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    await handlePrint();
+  // Impresión reforzada: envía la lista de copias una por una, esperando la
+  // confirmación de cada trabajo antes de mandar el siguiente. No abre el
+  // cajón de dinero (eso sigue siendo exclusivo del botón de Caja).
+  const runPrintJobs = async (
+    mode: PrintMode,
+    jobs: PrintJob[],
+    doneBefore: number,
+    total: number
+  ) => {
+    if (printingRef.current) return;
+    printingRef.current = true;
+    setPendingCopies(null);
+
+    let done = doneBefore;
+    setPrintProgress({ done, total });
+
+    try {
+      for (let index = 0; index < jobs.length; index += 1) {
+        const job = jobs[index];
+
+        // Una plantilla a la vez: cliente y negocio nunca se mezclan.
+        setPrintMode(job.document);
+        await settleDom();
+
+        try {
+          await api.printCopy(job);
+        } catch (copyError) {
+          const detail =
+            copyError instanceof Error ? copyError.message : 'Error desconocido de impresión.';
+
+          setPendingCopies({ mode, jobs: jobs.slice(index), done, total });
+          showToast(
+            `Se imprimió ${done} de ${total} ${total === 1 ? 'copia' : 'copias'}. La copia ${
+              done + 1
+            } (${COPY_LABEL[job.document]}) no pudo enviarse a la impresora: ${detail}`,
+            'error',
+            9000
+          );
+          return;
+        }
+
+        done += 1;
+        setPrintProgress({ done, total });
+      }
+
+      showToast(
+        total === 1
+          ? 'Copia enviada a la impresora.'
+          : `Se enviaron ${total} copias a la impresora.`,
+        'success'
+      );
+    } finally {
+      printingRef.current = false;
+      setPrintProgress(null);
+      setPrintMode(mode);
+    }
   };
+
+  const handleForcedPrint = async (mode: PrintMode, copiesRequested: number) => {
+    if (printingRef.current) return;
+
+    // El PDF se guarda una sola vez, con el modo elegido, igual que hoy.
+    setPrintMode(mode);
+    await settleDom();
+
+    try {
+      setRunningPdfAction(true);
+      const result = await generatePdf();
+      if (!result.saved) return;
+    } catch (printError) {
+      showToast(
+        printError instanceof Error ? printError.message : 'No fue posible imprimir la factura.',
+        'error'
+      );
+      return;
+    } finally {
+      setRunningPdfAction(false);
+    }
+
+    const jobs = buildPrintJobs(mode, copiesRequested);
+    await runPrintJobs(mode, jobs, 0, jobs.length);
+  };
+
+  const handlePrintMode = async (mode: PrintMode) => {
+    if (printActionRef.current || printingRef.current) return;
+    printActionRef.current = true;
+
+    try {
+      if (forceApplicationCopies) {
+        await handleForcedPrint(mode, copies);
+        return;
+      }
+
+      setPrintMode(mode);
+      // Esperar a que React aplique la className antes de imprimir.
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await handlePrint();
+    } finally {
+      printActionRef.current = false;
+    }
+  };
+
+  const handleRetryPendingCopies = async () => {
+    if (!pendingCopies) return;
+    if (printActionRef.current || printingRef.current) return;
+    printActionRef.current = true;
+
+    try {
+      const { mode, jobs, done, total } = pendingCopies;
+      await runPrintJobs(mode, jobs, done, total);
+    } finally {
+      printActionRef.current = false;
+    }
+  };
+
+  const printProgressLabel = printProgress
+    ? `Imprimiendo ${Math.min(printProgress.done + 1, printProgress.total)} de ${
+        printProgress.total
+      }...`
+    : null;
+
+  const printBusy = runningPdfAction || printProgress !== null;
 
   const handleWhatsapp = async () => {
     if (!data) return;
@@ -214,9 +389,17 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
       try {
         await generatePdf();
         autoSavedRef.current = true;
-        if (!cancelled) {
-          window.setTimeout(() => window.print(), 180);
+        if (cancelled) return;
+
+        if (forceApplicationCopies) {
+          // Una copia de cada documento, como el trabajo único de hoy,
+          // pero enviadas como trabajos independientes.
+          const jobs = buildPrintJobs('both', 1);
+          await runPrintJobs('both', jobs, 0, jobs.length);
+          return;
         }
+
+        window.setTimeout(() => window.print(), 180);
       } catch (printError) {
         console.error('No fue posible preparar la impresión automática:', printError);
       }
@@ -227,7 +410,7 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
     return () => {
       cancelled = true;
     };
-  }, [data, isFetching, shouldAutoPrint, pdfOutputDir]);
+  }, [data, isFetching, shouldAutoPrint, pdfOutputDir, forceApplicationCopies]);
 
   if (isLoading) {
     return <div className="card-panel">Cargando factura...</div>;
@@ -260,30 +443,78 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
               <Button
                 variant="secondary"
                 onClick={handleSavePdf}
-                disabled={runningPdfAction}
+                disabled={printBusy}
               >
                 {runningPdfAction ? 'Generando PDF...' : 'Guardar PDF'}
               </Button>
+              {forceApplicationCopies && (
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}
+                  title="Cada copia se envía como un trabajo de impresión independiente."
+                >
+                  <span style={{ whiteSpace: 'nowrap' }}>Copias</span>
+                  <input
+                    className="field"
+                    type="number"
+                    min={1}
+                    max={MAX_COPIES}
+                    step={1}
+                    value={copies}
+                    disabled={printBusy}
+                    onChange={(e) => {
+                      const parsed = Number(e.target.value);
+                      if (!Number.isFinite(parsed)) return;
+                      setCopies(Math.min(MAX_COPIES, Math.max(1, Math.trunc(parsed))));
+                    }}
+                    style={{ width: 68 }}
+                  />
+                </label>
+              )}
               <Button
                 variant="secondary"
                 onClick={() => handlePrintMode('customer')}
-                disabled={runningPdfAction}
+                disabled={printBusy}
               >
                 Solo cliente
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => handlePrintMode('internal')}
-                disabled={runningPdfAction}
+                disabled={printBusy}
               >
                 Solo negocio
               </Button>
-              <Button onClick={() => handlePrintMode('both')} disabled={runningPdfAction}>
-                {runningPdfAction ? 'Preparando impresión...' : 'Imprimir ambas'}
+              <Button onClick={() => handlePrintMode('both')} disabled={printBusy}>
+                {printProgressLabel ??
+                  (runningPdfAction ? 'Preparando impresión...' : 'Imprimir ambas')}
               </Button>
+              {pendingCopies && (
+                <Button
+                  variant="secondary"
+                  onClick={handleRetryPendingCopies}
+                  disabled={printBusy}
+                >
+                  Reintentar copia faltante
+                </Button>
+              )}
             </div>
           }
         />
+
+        {printProgressLabel && (
+          <p style={{ margin: '8px 0 0', color: '#2563eb', fontWeight: 600 }}>
+            {printProgressLabel}
+          </p>
+        )}
+
+        {!printProgress && pendingCopies && (
+          <p style={{ margin: '8px 0 0' }} className="error-text">
+            Se imprimió {pendingCopies.done} de {pendingCopies.total}{' '}
+            {pendingCopies.total === 1 ? 'copia' : 'copias'}. Falta
+            {pendingCopies.jobs.length === 1 ? ' 1 copia' : ` ${pendingCopies.jobs.length} copias`}{' '}
+            por enviar a la impresora.
+          </p>
+        )}
 
         <div
           className="card-panel"

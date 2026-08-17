@@ -6,6 +6,8 @@ const AUTO_READY_BY_DUE_DATE_KEY = 'auto_ready_by_due_date_enabled';
 const INVOICE_SHOW_ALL_ACTIVE_ORDERS_KEY = 'invoice_show_all_active_orders';
 const ORDER_QUANTITY_DECIMALS_ENABLED_KEY = 'order_quantity_decimals_enabled';
 const INVOICE_SHOW_BARCODE_KEY = 'invoice_show_barcode';
+const PRINT_FORCE_APPLICATION_COPIES_KEY = 'print_force_application_copies';
+const PRINT_FORCE_COPIES_PRINTER_KEY = 'print_force_copies_printer';
 
 export const createSettingsService = (db: Kysely<Database>) => ({
   async getCompanySettings(): Promise<CompanySettings | null> {
@@ -360,5 +362,96 @@ export const createSettingsService = (db: Kysely<Database>) => ({
     }
 
     return { success: true, enabled };
+  },
+
+  // Impresión reforzada de múltiples copias. Desactivada por defecto para
+  // no alterar el comportamiento de las instalaciones existentes: si está
+  // en false la app sigue usando el diálogo de impresión de Windows.
+  async getPrintForceApplicationCopiesEnabled(): Promise<boolean> {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', PRINT_FORCE_APPLICATION_COPIES_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    if (!setting) return false;
+
+    const normalized = String(setting.setting_value ?? '').trim().toLowerCase();
+    return normalized === '1' || normalized === 'true';
+  },
+
+  async updatePrintForceApplicationCopiesEnabled(
+    enabled: boolean
+  ): Promise<{ success: true; enabled: boolean }> {
+    const normalized = enabled ? '1' : '0';
+    const existing = await db
+      .selectFrom('app_settings')
+      .select(['id'])
+      .where('setting_key', '=', PRINT_FORCE_APPLICATION_COPIES_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    if (existing) {
+      await db
+        .updateTable('app_settings')
+        .set({ setting_value: normalized })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await db
+        .insertInto('app_settings')
+        .values({
+          setting_key: PRINT_FORCE_APPLICATION_COPIES_KEY,
+          setting_value: normalized
+        })
+        .execute();
+    }
+
+    return { success: true, enabled };
+  },
+
+  // Impresora usada por la impresión reforzada. Vacío = impresora
+  // predeterminada de Windows.
+  async getPrintForceCopiesPrinter(): Promise<string | null> {
+    const setting = await db
+      .selectFrom('app_settings')
+      .select(['setting_value'])
+      .where('setting_key', '=', PRINT_FORCE_COPIES_PRINTER_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    const value = String(setting?.setting_value ?? '').trim();
+    return value ? value : null;
+  },
+
+  async updatePrintForceCopiesPrinter(
+    value: string | null
+  ): Promise<{ success: true; value: string | null }> {
+    const normalized = String(value ?? '').trim();
+    const existing = await db
+      .selectFrom('app_settings')
+      .select(['id'])
+      .where('setting_key', '=', PRINT_FORCE_COPIES_PRINTER_KEY)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+
+    if (existing) {
+      await db
+        .updateTable('app_settings')
+        .set({ setting_value: normalized })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await db
+        .insertInto('app_settings')
+        .values({
+          setting_key: PRINT_FORCE_COPIES_PRINTER_KEY,
+          setting_value: normalized
+        })
+        .execute();
+    }
+
+    return { success: true, value: normalized ? normalized : null };
   }
 });

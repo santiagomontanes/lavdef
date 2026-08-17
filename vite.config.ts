@@ -12,6 +12,17 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    // Las librerías base van en su propio chunk y cada pantalla en el
+    // suyo (React.lazy), así el arranque solo interpreta lo necesario.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 700
   }
 });

@@ -63,6 +63,11 @@ const normalizeName = (raw: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Compara teléfonos ignorando el formato con el que fueron guardados:
+// "300 123 4567", "300-123-4567" y "3001234567" son el mismo número.
+const phoneDigitsColumn = () =>
+  sql<string>`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '')`;
+
 const isDuplicateCodeError = (err: unknown) => {
   const code = (err as { code?: string } | null)?.code ?? '';
   if (code === 'ER_DUP_ENTRY') return true;
@@ -120,7 +125,8 @@ export const createClientsService = (db: Kysely<Database>) => {
       .where((eb) => {
         const conditions = [] as any[];
         if (phoneDigits.length >= 4) {
-          conditions.push(eb('phone', 'like', `%${phoneDigits}%`));
+          // Ignora el formato con el que se guardó el teléfono existente.
+          conditions.push(sql<boolean>`${phoneDigitsColumn()} LIKE ${`%${phoneDigits}%`}`);
         }
         if (firstNorm.length >= 2 && lastNorm.length >= 2) {
           conditions.push(
@@ -188,27 +194,74 @@ export const createClientsService = (db: Kysely<Database>) => {
       return rows.map(mapClient);
     },
 
+    // Búsqueda tolerante: cada palabra del término debe aparecer en algún
+    // campo del cliente (nombre, apellido, código o teléfono), en cualquier
+    // orden. Así "perez juan", "juan perez", "CLI-000123", "123" o
+    // "300 123 4567" encuentran al mismo cliente y el operario no termina
+    // creando un duplicado porque "no aparece".
     async searchByName(term: string, limit = 40): Promise<Client[]> {
       const normalized = String(term ?? '').trim();
       if (!normalized) return [];
 
-      const likeTerm = `%${normalized}%`;
-      const phoneDigits = normalized.replace(/\D/g, '');
+      const tokens = normalized.split(/\s+/).filter(Boolean).slice(0, 6);
+      const fullLike = `%${normalized}%`;
+      const fullDigits = normalized.replace(/\D/g, '');
+
       const rows = await db
-        .selectFrom('clients')
-        .selectAll()
+        .selectFrom('clients as c')
+        .leftJoin('orders as o', 'o.client_id', 'c.id')
+        .select([
+          'c.id',
+          'c.code',
+          'c.first_name',
+          'c.last_name',
+          'c.phone',
+          'c.email',
+          'c.address',
+          'c.notes',
+          'c.created_at',
+          (eb) => eb.fn.count<number>('o.id').as('orders_count')
+        ])
         .where((eb) =>
           eb.or([
-            eb('first_name', 'like', likeTerm),
-            eb('last_name', 'like', likeTerm),
-            sql<boolean>`CONCAT(first_name, ' ', last_name) LIKE ${likeTerm}`,
-            ...(phoneDigits.length >= 4
-              ? [eb('phone', 'like', `%${phoneDigits}%`) as any]
-              : [])
+            // Coincidencia por el término completo (incluye nombres con
+            // espacios y teléfonos escritos con formato).
+            sql<boolean>`CONCAT(first_name, ' ', last_name) LIKE ${fullLike}`,
+            sql<boolean>`CONCAT(last_name, ' ', first_name) LIKE ${fullLike}`,
+            ...(fullDigits.length >= 3
+              ? [sql<boolean>`${phoneDigitsColumn()} LIKE ${`%${fullDigits}%`}`]
+              : []),
+            // Coincidencia por palabras sueltas: todas deben aparecer.
+            eb.and(
+              tokens.map((token) => {
+                const likeToken = `%${token}%`;
+                const tokenDigits = token.replace(/\D/g, '');
+
+                return eb.or([
+                  eb('c.first_name', 'like', likeToken),
+                  eb('c.last_name', 'like', likeToken),
+                  eb('c.code', 'like', likeToken),
+                  ...(tokenDigits.length >= 3
+                    ? [sql<boolean>`${phoneDigitsColumn()} LIKE ${`%${tokenDigits}%`}`]
+                    : [])
+                ]);
+              })
+            )
           ])
         )
-        .orderBy('first_name')
-        .orderBy('last_name')
+        .groupBy([
+          'c.id',
+          'c.code',
+          'c.first_name',
+          'c.last_name',
+          'c.phone',
+          'c.email',
+          'c.address',
+          'c.notes',
+          'c.created_at'
+        ])
+        .orderBy('c.first_name')
+        .orderBy('c.last_name')
         .limit(Math.max(1, Math.min(100, Number(limit) || 40)))
         .execute();
 
@@ -222,17 +275,31 @@ export const createClientsService = (db: Kysely<Database>) => {
       const actorName = getCurrentSessionUserName();
       const parsed = createInputSchema.parse(input);
 
+      const phoneDigits = normalizePhone(parsed.phone);
       const existingByPhone = await db
         .selectFrom('clients')
         .select(['id', 'code', 'first_name', 'last_name'])
-        .where('phone', '=', parsed.phone)
+        .where((eb) =>
+          phoneDigits.length >= 4
+            ? // Compara por dígitos: "300 123 4567" y "3001234567" son el
+              // mismo teléfono aunque se hayan guardado distinto.
+              eb.or([
+                eb('phone', '=', parsed.phone),
+                sql<boolean>`${phoneDigitsColumn()} = ${phoneDigits}`
+              ])
+            : eb('phone', '=', parsed.phone)
+        )
         .executeTakeFirst();
 
       if (existingByPhone) {
         // El teléfono es UNIQUE de facto. Aunque la BD no lo imponga, el
         // negocio depende de él para WhatsApp y por eso lo bloqueamos
         // siempre — sin importar el flag force.
-        throw new Error('El número de teléfono ya está registrado en otro cliente. Revisa el teléfono ingresado.');
+        throw new Error(
+          `El número de teléfono ya está registrado en el cliente ${existingByPhone.code} · ` +
+            `${existingByPhone.first_name} ${existingByPhone.last_name}. ` +
+            'Búscalo por ese código, nombre o teléfono en vez de crear uno nuevo.'
+        );
       }
 
       if (!parsed.force) {
@@ -298,15 +365,26 @@ export const createClientsService = (db: Kysely<Database>) => {
       const actorName = getCurrentSessionUserName();
       const parsed = schema.parse(input);
 
+      const phoneDigits = normalizePhone(parsed.phone);
       const existing = await db
         .selectFrom('clients')
-        .select('id')
-        .where('phone', '=', parsed.phone)
+        .select(['id', 'code', 'first_name', 'last_name'])
+        .where((eb) =>
+          phoneDigits.length >= 4
+            ? eb.or([
+                eb('phone', '=', parsed.phone),
+                sql<boolean>`${phoneDigitsColumn()} = ${phoneDigits}`
+              ])
+            : eb('phone', '=', parsed.phone)
+        )
         .where('id', '!=', id)
         .executeTakeFirst();
 
       if (existing) {
-        throw new Error('El número de teléfono ya está registrado en otro cliente. Revisa el teléfono ingresado.');
+        throw new Error(
+          `El número de teléfono ya está registrado en el cliente ${existing.code} · ` +
+            `${existing.first_name} ${existing.last_name}. Revisa el teléfono ingresado.`
+        );
       }
 
       await repository.update(id, {

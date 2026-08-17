@@ -63,6 +63,16 @@ declare global {
 
       listPrinters: () => Promise<unknown>;
       openCashDrawer: (printerName?: string) => Promise<unknown>;
+      printCopy: (input: {
+        document: string;
+        copyIndex: number;
+        copiesTotal: number;
+      }) => Promise<unknown>;
+
+      getPrintForceApplicationCopiesEnabled: () => Promise<unknown>;
+      updatePrintForceApplicationCopiesEnabled: (enabled: boolean) => Promise<unknown>;
+      getPrintForceCopiesPrinter: () => Promise<unknown>;
+      updatePrintForceCopiesPrinter: (value: string | null) => Promise<unknown>;
 
       updateCompanySettings: (input: any) => Promise<any>;
 

@@ -5,7 +5,6 @@ import http from 'node:http';
 import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { shell } from 'electron';
-import { google } from 'googleapis';
 import { databaseManager } from './database-manager.js';
 import {
   firstExistingPath,
@@ -14,6 +13,18 @@ import {
 } from '../utils/runtime-paths.js';
 
 const execAsync = promisify(exec);
+
+// googleapis carga sus 300+ APIs de golpe: ~1.6 s de CPU y >100 MB de RAM.
+// Solo hace falta cuando el usuario conecta o sube un respaldo a Drive, así
+// que se carga bajo demanda (una sola vez) en lugar de en cada arranque.
+let googleApisPromise: Promise<typeof import('googleapis')['google']> | null = null;
+
+const loadGoogleApis = async () => {
+  if (!googleApisPromise) {
+    googleApisPromise = import('googleapis').then((mod) => mod.google);
+  }
+  return googleApisPromise;
+};
 
 const GOOGLE_REDIRECT_URI = 'http://127.0.0.1:3017/oauth2callback';
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/drive.file'];
@@ -63,7 +74,8 @@ class BackupService {
     );
   }
 
-  private getOAuthClient() {
+  private async getOAuthClient() {
+    const google = await loadGoogleApis();
     const credentialsPath = this.getGoogleCredentialsPath();
     const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf-8'));
     const installed = credentials.installed || credentials.web;
@@ -139,7 +151,7 @@ class BackupService {
   }
 
   private async tryRefreshToken(
-    oAuth2Client: ReturnType<BackupService['getOAuthClient']>,
+    oAuth2Client: Awaited<ReturnType<BackupService['getOAuthClient']>>,
     userId?: number
   ): Promise<boolean> {
     try {
@@ -171,7 +183,7 @@ class BackupService {
 
   private async withTokenRetry<T>(
     userId: number | undefined,
-    operation: (auth: ReturnType<BackupService['getOAuthClient']>) => Promise<T>,
+    operation: (auth: Awaited<ReturnType<BackupService['getOAuthClient']>>) => Promise<T>,
     onProgress?: (status: 'refreshing') => void
   ): Promise<T> {
     const auth = await this.getAuthorizedClient(userId);
@@ -196,7 +208,7 @@ class BackupService {
 
   async connectDrive(userId?: number) {
     const db = await databaseManager.getDb();
-    const oAuth2Client = this.getOAuthClient();
+    const oAuth2Client = await this.getOAuthClient();
 
     const authUrl = oAuth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -283,7 +295,7 @@ class BackupService {
       throw new Error('Primero debes conectar Google Drive.');
     }
 
-    const oAuth2Client = this.getOAuthClient();
+    const oAuth2Client = await this.getOAuthClient();
 
     oAuth2Client.setCredentials({
       access_token: token.access_token ?? undefined,
@@ -385,7 +397,7 @@ class BackupService {
       const response = await this.withTokenRetry(
         userId,
         async (auth) => {
-          const drive = google.drive({ version: 'v3', auth });
+          const drive = (await loadGoogleApis()).drive({ version: 'v3', auth });
           return drive.files.create({
             requestBody: { name: fileName },
             media: { mimeType: 'application/sql', body: fs.createReadStream(filePath) },

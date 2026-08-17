@@ -109,6 +109,16 @@ export const api = {
   openCashDrawer: (printerName?: string) =>
     unwrap<OpenDrawerResult>(window.desktopApi.openCashDrawer(printerName)),
 
+  // Envía UNA copia como trabajo de impresión independiente (impresión reforzada).
+  printCopy: (input: { document: string; copyIndex: number; copiesTotal: number }) =>
+    unwrap<{
+      success: true;
+      document: string;
+      copyIndex: number;
+      copiesTotal: number;
+      printerName: string | null;
+    }>(callDesktopApi('printCopy', input)),
+
   updateCompanySettings: (input: any) =>
     unwrap(window.desktopApi.updateCompanySettings(input)),
 
@@ -124,6 +134,18 @@ export const api = {
     unwrap<boolean>(callDesktopApi('getInvoiceShowBarcodeEnabled')),
   getOrderQuantityDecimalsEnabled: () =>
     unwrap<boolean>(callDesktopApi('getOrderQuantityDecimalsEnabled')),
+  getPrintForceApplicationCopiesEnabled: () =>
+    unwrap<boolean>(callDesktopApi('getPrintForceApplicationCopiesEnabled')),
+  updatePrintForceApplicationCopiesEnabled: (enabled: boolean) =>
+    unwrap<{ success: true; enabled: boolean }>(
+      callDesktopApi('updatePrintForceApplicationCopiesEnabled', enabled)
+    ),
+  getPrintForceCopiesPrinter: () =>
+    unwrap<string | null>(callDesktopApi('getPrintForceCopiesPrinter')),
+  updatePrintForceCopiesPrinter: (value: string | null) =>
+    unwrap<{ success: true; value: string | null }>(
+      callDesktopApi('updatePrintForceCopiesPrinter', value)
+    ),
   getPdfOutputDir: () =>
     unwrap<string | null>(callDesktopApi('getPdfOutputDir')),
   updatePdfOutputDir: (value: string | null) =>

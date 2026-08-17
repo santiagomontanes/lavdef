@@ -82,6 +82,14 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('settings:update-invoice-show-barcode-enabled', enabled),
   updateOrderQuantityDecimalsEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('settings:update-order-quantity-decimals-enabled', enabled),
+  getPrintForceApplicationCopiesEnabled: () =>
+    ipcRenderer.invoke('settings:get-print-force-application-copies-enabled'),
+  updatePrintForceApplicationCopiesEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('settings:update-print-force-application-copies-enabled', enabled),
+  getPrintForceCopiesPrinter: () =>
+    ipcRenderer.invoke('settings:get-print-force-copies-printer'),
+  updatePrintForceCopiesPrinter: (value: string | null) =>
+    ipcRenderer.invoke('settings:update-print-force-copies-printer', value),
 
   updateOrderProtectionPassword: (input: {
   currentPassword: string;
@@ -101,6 +109,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
 
   listPrinters: () => ipcRenderer.invoke('printers:list'),
   openCashDrawer: (printerName?: string) => ipcRenderer.invoke('printer:open-drawer', printerName),
+  printCopy: (input: { document: string; copyIndex: number; copiesTotal: number }) =>
+    ipcRenderer.invoke('printer:print-copy', input),
 
   updateCompanySettings: (input: any) =>
     ipcRenderer.invoke('settings:update-company', input),

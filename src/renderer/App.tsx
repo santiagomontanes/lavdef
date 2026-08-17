@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import type { HealthStatus, PendingReadyCheck, SessionUser } from '@shared/types';
@@ -7,28 +7,31 @@ import { AppShell } from './ui/layouts/AppShell';
 import { Modal } from './ui/components';
 import { SetupPage } from './modules/shared/components/SetupPage';
 import { LoginPage } from './modules/auth/pages/LoginPage';
-import { DashboardPage } from './modules/dashboard/pages/DashboardPage';
-import { ClientsPage } from './modules/clients/pages/ClientsPage';
-import { NewOrderPage } from './modules/orders/pages/NewOrderPage';
-import { OrderDetailPage } from './modules/orders/pages/OrderDetailPage';
-import { OrdersPage } from './modules/orders/pages/OrdersPage';
-import { PaymentsPage } from './modules/payments/pages/PaymentsPage';
-import { InvoicesPage } from './modules/invoices/pages/InvoicesPage';
-import { InvoiceDetailPage } from './modules/invoices/pages/InvoiceDetailPage';
-import { CashPage } from './modules/cash/pages/CashPage';
-import { DeliveriesPage } from './modules/deliveries/pages/DeliveriesPage';
-import { InventoryPage } from './modules/inventory/pages/InventoryPage';
-import { ExpensesPage } from './modules/expenses/pages/ExpensesPage';
-import { WarrantiesPage } from './modules/warranties/pages/WarrantiesPage';
-import { ReportsPage } from './modules/reports/pages/ReportsPage';
-import { CashReportPrintPage } from './modules/reports/pages/CashReportPrintPage';
-import { InventoryGeneralPrintPage } from './modules/reports/pages/InventoryGeneralPrintPage';
-import { WhatsappPage } from './modules/whatsapp/pages/WhatsappPage';
-import { SettingsPage } from './modules/settings/pages/SettingsPage';
-import { UsersPage } from './modules/users/pages/UsersPage';
-import { AuditPage } from './modules/audit/pages/AuditPage';
 import { LicensePage } from './modules/license/pages/LicensePage';
 import { LicenseRenewalBanner } from './modules/license/components/LicenseRenewalBanner';
+
+// Cada pantalla se descarga solo cuando se entra a ella: el arranque
+// no tiene que interpretar el código de los 20 módulos de golpe.
+const DashboardPage = lazy(() => import('./modules/dashboard/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ClientsPage = lazy(() => import('./modules/clients/pages/ClientsPage').then((m) => ({ default: m.ClientsPage })));
+const NewOrderPage = lazy(() => import('./modules/orders/pages/NewOrderPage').then((m) => ({ default: m.NewOrderPage })));
+const OrderDetailPage = lazy(() => import('./modules/orders/pages/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })));
+const OrdersPage = lazy(() => import('./modules/orders/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const PaymentsPage = lazy(() => import('./modules/payments/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })));
+const InvoicesPage = lazy(() => import('./modules/invoices/pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })));
+const InvoiceDetailPage = lazy(() => import('./modules/invoices/pages/InvoiceDetailPage').then((m) => ({ default: m.InvoiceDetailPage })));
+const CashPage = lazy(() => import('./modules/cash/pages/CashPage').then((m) => ({ default: m.CashPage })));
+const DeliveriesPage = lazy(() => import('./modules/deliveries/pages/DeliveriesPage').then((m) => ({ default: m.DeliveriesPage })));
+const InventoryPage = lazy(() => import('./modules/inventory/pages/InventoryPage').then((m) => ({ default: m.InventoryPage })));
+const ExpensesPage = lazy(() => import('./modules/expenses/pages/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
+const WarrantiesPage = lazy(() => import('./modules/warranties/pages/WarrantiesPage').then((m) => ({ default: m.WarrantiesPage })));
+const ReportsPage = lazy(() => import('./modules/reports/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const CashReportPrintPage = lazy(() => import('./modules/reports/pages/CashReportPrintPage').then((m) => ({ default: m.CashReportPrintPage })));
+const InventoryGeneralPrintPage = lazy(() => import('./modules/reports/pages/InventoryGeneralPrintPage').then((m) => ({ default: m.InventoryGeneralPrintPage })));
+const WhatsappPage = lazy(() => import('./modules/whatsapp/pages/WhatsappPage').then((m) => ({ default: m.WhatsappPage })));
+const SettingsPage = lazy(() => import('./modules/settings/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const UsersPage = lazy(() => import('./modules/users/pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const AuditPage = lazy(() => import('./modules/audit/pages/AuditPage').then((m) => ({ default: m.AuditPage })));
 
 export default function App() {
   const [licenseReady, setLicenseReady] = useState(false);
@@ -173,6 +176,7 @@ export default function App() {
         />
       )}
 
+      <Suspense fallback={<div className="card-panel">Cargando...</div>}>
       <Routes>
         <Route element={
           <AppShell
@@ -254,6 +258,7 @@ export default function App() {
           <Route path="*" element={<Navigate to={isAdmin ? '/' : '/ordenes'} replace />} />
         </Route>
       </Routes>
+      </Suspense>
 
       {/* Modal 1: contraseña para reagendar */}
       <Modal

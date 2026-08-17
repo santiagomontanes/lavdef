@@ -320,6 +320,36 @@ export const registerIpc = () => {
   );
 
   ipcMain.handle(
+    'settings:get-print-force-application-copies-enabled',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getPrintForceApplicationCopiesEnabled()
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-print-force-application-copies-enabled',
+    wrap(async (enabled: boolean) =>
+      createSettingsService(await databaseManager.getDb()).updatePrintForceApplicationCopiesEnabled(
+        Boolean(enabled)
+      )
+    )
+  );
+
+  ipcMain.handle(
+    'settings:get-print-force-copies-printer',
+    wrap(async () =>
+      createSettingsService(await databaseManager.getDb()).getPrintForceCopiesPrinter()
+    )
+  );
+
+  ipcMain.handle(
+    'settings:update-print-force-copies-printer',
+    wrap(async (value: string | null) =>
+      createSettingsService(await databaseManager.getDb()).updatePrintForceCopiesPrinter(value)
+    )
+  );
+
+  ipcMain.handle(
     'settings:get-pdf-output-dir',
     wrap(async () =>
       createSettingsService(await databaseManager.getDb()).getPdfOutputDir()
@@ -394,6 +424,55 @@ export const registerIpc = () => {
   ipcMain.handle(
     'printer:open-drawer',
     wrap(async (printerName?: string) => printerService.openDrawer(printerName))
+  );
+
+  // Impresión reforzada: un trabajo independiente por copia. El renderer
+  // llama a este canal una vez por copia y espera la confirmación antes de
+  // pedir la siguiente. Nunca abre el cajón de dinero.
+  ipcMain.handle(
+    'printer:print-copy',
+    async (
+      event,
+      input?: { document?: string; copyIndex?: number; copiesTotal?: number }
+    ) => {
+      try {
+        const settings = createSettingsService(await databaseManager.getDb());
+        const forceApplicationCopies = await settings.getPrintForceApplicationCopiesEnabled();
+
+        if (!forceApplicationCopies) {
+          throw new Error(
+            'La impresión reforzada de copias está desactivada en Configuración.'
+          );
+        }
+
+        const printerName = await settings.getPrintForceCopiesPrinter();
+        const copyIndex = Number(input?.copyIndex ?? 1);
+        const copiesTotal = Number(input?.copiesTotal ?? 1);
+        const document = String(input?.document ?? 'documento');
+
+        if (copyIndex === 1) {
+          diagnosticLogger.info(
+            'print',
+            `document=${document} copiesRequested=${copiesTotal} forceApplicationCopies=true`
+          );
+        }
+
+        const data = await printerService.printCopy(event.sender, {
+          document,
+          copyIndex,
+          copiesTotal,
+          printerName
+        });
+
+        return { success: true, data };
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'No fue posible enviar la copia a la impresora.'
+        };
+      }
+    }
   );
 
   ipcMain.handle(

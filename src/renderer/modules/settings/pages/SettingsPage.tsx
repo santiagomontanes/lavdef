@@ -82,6 +82,30 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     enabled: unlocked
   });
 
+  const { data: printForceApplicationCopies = false } = useQuery({
+    queryKey: ['print-force-application-copies-enabled'],
+    queryFn: api.getPrintForceApplicationCopiesEnabled,
+    enabled: unlocked
+  });
+
+  const { data: printForceCopiesPrinter = null } = useQuery({
+    queryKey: ['print-force-copies-printer'],
+    queryFn: api.getPrintForceCopiesPrinter,
+    enabled: unlocked
+  });
+
+  const { data: availablePrinters = [] } = useQuery({
+    queryKey: ['printers'],
+    queryFn: async () => {
+      try {
+        return await api.listPrinters();
+      } catch {
+        return [];
+      }
+    },
+    enabled: unlocked
+  });
+
   useEffect(() => {
     if (unlocked && data) setForm(data);
   }, [unlocked, data]);
@@ -169,6 +193,20 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     mutationFn: api.updateDisableGpuRenderingEnabled,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['disable-gpu-rendering-enabled'] });
+    }
+  });
+
+  const updatePrintForceCopiesMutation = useMutation({
+    mutationFn: api.updatePrintForceApplicationCopiesEnabled,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['print-force-application-copies-enabled'] });
+    }
+  });
+
+  const updatePrintForceCopiesPrinterMutation = useMutation({
+    mutationFn: api.updatePrintForceCopiesPrinter,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['print-force-copies-printer'] });
     }
   });
 
@@ -513,6 +551,68 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         {updateDisableGpuRenderingMutation.isSuccess && (
           <p style={{ color: 'green', margin: 0 }}>
             Preferencia de video actualizada correctamente.
+          </p>
+        )}
+      </div>
+
+      <div className="card-panel stack-gap">
+        <h3>Impresión</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <input
+            type="checkbox"
+            checked={printForceApplicationCopies}
+            onChange={(e) => updatePrintForceCopiesMutation.mutate(e.target.checked)}
+            disabled={updatePrintForceCopiesMutation.isPending}
+            style={{ marginTop: 4 }}
+          />
+          <div>
+            <strong>Forzar múltiples copias desde la aplicación</strong>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Activa esta opción si tu impresora ignora la cantidad de copias seleccionada. La
+              aplicación enviará cada copia como un trabajo de impresión independiente.
+            </p>
+            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+              Con la opción activada la factura se envía directo a la impresora (sin el diálogo de
+              Windows) y en la pantalla de factura podrás elegir cuántas copias imprimir.
+            </p>
+          </div>
+        </label>
+
+        {printForceApplicationCopies && (
+          <label>
+            <span>Impresora para la impresión reforzada</span>
+            <select
+              value={printForceCopiesPrinter ?? ''}
+              onChange={(e) =>
+                updatePrintForceCopiesPrinterMutation.mutate(e.target.value || null)
+              }
+              disabled={updatePrintForceCopiesPrinterMutation.isPending}
+            >
+              <option value="">Impresora predeterminada de Windows</option>
+              {availablePrinters.map((printer) => (
+                <option key={printer.name} value={printer.name}>
+                  {printer.name}
+                  {printer.isDefault ? ' (predeterminada)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {(updatePrintForceCopiesMutation.isError ||
+          updatePrintForceCopiesPrinterMutation.isError) && (
+          <p className="error-text">
+            {
+              ((updatePrintForceCopiesMutation.error ??
+                updatePrintForceCopiesPrinterMutation.error) as Error).message
+            }
+          </p>
+        )}
+
+        {(updatePrintForceCopiesMutation.isSuccess ||
+          updatePrintForceCopiesPrinterMutation.isSuccess) && (
+          <p style={{ margin: 0, color: 'green' }}>
+            Preferencia de impresión actualizada correctamente.
           </p>
         )}
       </div>
