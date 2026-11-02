@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@renderer/services/api';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { GlobalSearchResult, PendingReadyCheck, SessionUser } from '@shared/types';
+import { IconBell, IconCheck, IconClose, IconLogout, IconSearch, navIcons } from '@renderer/ui/components/icons';
 
 const menu = [
   { to: '/', label: 'Inicio' },
@@ -40,6 +41,20 @@ export const AppShell = ({
   onDismissAllNotifications
 }: AppShellProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Título del encabezado según la pantalla actual (solo visual).
+  const pageTitle = useMemo(() => {
+    const path = location.pathname;
+    if (path === '/') return 'Inicio';
+    if (path === '/ordenes/nueva') return 'Nueva orden';
+    if (path.startsWith('/ordenes/')) return 'Detalle de orden';
+    if (path.startsWith('/facturas/')) return 'Factura';
+    if (path.startsWith('/arqueo')) return 'Arqueo de caja';
+    const match = menu.find((item) => item.to !== '/' && (path === item.to || path.startsWith(`${item.to}/`)));
+    return match?.label ?? '';
+  }, [location.pathname]);
+
   const [now, setNow] = useState(() => new Date());
   const [searchText, setSearchText] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -150,11 +165,15 @@ export const AppShell = ({
         </div>
 
         <nav className="sidebar-nav">
-          {visibleMenu.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className="nav-link">
-              {item.label}
-            </NavLink>
-          ))}
+          {visibleMenu.map((item) => {
+            const Icon = navIcons[item.to];
+            return (
+              <NavLink key={item.to} to={item.to} end={item.to === '/'} className="nav-link">
+                {Icon ? <Icon className="nav-icon" /> : null}
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
@@ -167,29 +186,19 @@ export const AppShell = ({
               try { await api.logout(); } catch { } finally { onLogout(); }
             }}
           >
+            <IconLogout width={18} height={18} />
             Cerrar sesión
           </button>
           <button
             type="button"
+            className="sidebar-version"
             onClick={() => setDiagnosticsOpen(true)}
             title="Ver versión y diagnóstico de la app"
-            style={{
-              marginTop: 8,
-              background: 'transparent',
-              border: '1px dashed rgba(0,0,0,0.18)',
-              borderRadius: 6,
-              padding: '6px 8px',
-              fontSize: 11,
-              color: 'var(--color-muted, #6b7280)',
-              cursor: 'pointer',
-              textAlign: 'center',
-              lineHeight: 1.3
-            }}
           >
             {versionInfo ? (
               <>
-                <div style={{ fontWeight: 700 }}>v{versionInfo.version}</div>
-                <div style={{ fontSize: 10 }}>
+                <strong>v{versionInfo.version}</strong>
+                <div>
                   {versionInfo.isPackaged ? 'Build instalado' : 'Modo desarrollo'} · Ver diagnóstico
                 </div>
               </>
@@ -201,97 +210,56 @@ export const AppShell = ({
       </aside>
 
       {diagnosticsOpen && versionInfo ? (
-        <div
-          className="no-print"
-          onClick={() => setDiagnosticsOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            zIndex: 3000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#fff',
-              borderRadius: 10,
-              maxWidth: 560,
-              width: '100%',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-              padding: 20,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div className="no-print modal-backdrop diag-backdrop" onClick={() => setDiagnosticsOpen(false)}>
+          <div className="modal-card diag-card" role="dialog" aria-modal="true" aria-labelledby="diag-title" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
               <div>
-                <h3 style={{ margin: 0 }}>Diagnóstico de la app</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
+                <h3 id="diag-title">Diagnóstico de la app</h3>
+                <p className="diag-subtitle">
                   Información útil para soporte. Comparta una captura si reporta un problema.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setDiagnosticsOpen(false)}
-                style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}
-              >
-                ×
+              <button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setDiagnosticsOpen(false)}>
+                <IconClose />
               </button>
             </div>
 
-            <dl style={{ display: 'grid', gridTemplateColumns: '160px 1fr', rowGap: 8, columnGap: 12, fontSize: 13 }}>
-              <dt style={{ color: '#6b7280' }}>Versión</dt>
-              <dd style={{ margin: 0, fontWeight: 700 }}>v{versionInfo.version}</dd>
+            <dl className="diag-list">
+              <dt>Versión</dt>
+              <dd><strong>v{versionInfo.version}</strong></dd>
 
-              <dt style={{ color: '#6b7280' }}>Modo</dt>
-              <dd style={{ margin: 0 }}>{versionInfo.isPackaged ? 'EXE instalado' : 'Desarrollo'}</dd>
+              <dt>Modo</dt>
+              <dd>{versionInfo.isPackaged ? 'EXE instalado' : 'Desarrollo'}</dd>
 
-              <dt style={{ color: '#6b7280' }}>Observaciones en factura</dt>
-              <dd style={{ margin: 0, color: versionInfo.snapshotHasObservations ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+              <dt>Observaciones en factura</dt>
+              <dd className={versionInfo.snapshotHasObservations ? 'diag-ok' : 'diag-bad'}>
                 {versionInfo.snapshotHasObservations
                   ? 'OK – columnas presentes'
                   : 'FALTAN – snapshot no tiene customer/internal_observations'}
               </dd>
 
-              <dt style={{ color: '#6b7280' }}>Migraciones aplicadas</dt>
-              <dd style={{ margin: 0 }}>{versionInfo.appliedMigrations.length}</dd>
+              <dt>Migraciones aplicadas</dt>
+              <dd>{versionInfo.appliedMigrations.length}</dd>
 
-              <dt style={{ color: '#6b7280' }}>Última migración</dt>
-              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 12 }}>
+              <dt>Última migración</dt>
+              <dd className="diag-mono">
                 {versionInfo.appliedMigrations[versionInfo.appliedMigrations.length - 1] ?? '—'}
               </dd>
 
-              <dt style={{ color: '#6b7280' }}>Log del día</dt>
-              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 11, wordBreak: 'break-all' }}>
+              <dt>Log del día</dt>
+              <dd className="diag-mono diag-small">
                 {versionInfo.logPath ?? 'No disponible'}
               </dd>
 
-              <dt style={{ color: '#6b7280' }}>Carpeta de logs</dt>
-              <dd style={{ margin: 0, fontFamily: 'Consolas, monospace', fontSize: 11, wordBreak: 'break-all' }}>
+              <dt>Carpeta de logs</dt>
+              <dd className="diag-mono diag-small">
                 {versionInfo.logDir ?? 'No disponible'}
               </dd>
             </dl>
 
-            <details style={{ marginTop: 16 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 13 }}>
-                Ver lista completa de migraciones aplicadas
-              </summary>
-              <pre
-                style={{
-                  marginTop: 8,
-                  background: '#f3f4f6',
-                  padding: 10,
-                  borderRadius: 6,
-                  fontSize: 11,
-                  maxHeight: 200,
-                  overflow: 'auto'
-                }}
-              >
+            <details className="diag-details">
+              <summary>Ver lista completa de migraciones aplicadas</summary>
+              <pre>
                 {versionInfo.appliedMigrations.length > 0
                   ? versionInfo.appliedMigrations.join('\n')
                   : 'Aún no se han registrado migraciones.'}
@@ -304,12 +272,14 @@ export const AppShell = ({
       <div className="content-shell">
         <header className="topbar">
           <div>
-            <h1>Inicio</h1>
+            <h1>{pageTitle}</h1>
           </div>
 
           <div className="topbar-tools">
             <div className="topbar-search">
+              <IconSearch className="topbar-search-icon" />
               <input
+                aria-label="Buscar cliente, orden o factura"
                 className="field compact-field"
                 placeholder="Buscar cliente, orden o factura"
                 value={searchText}
@@ -371,40 +341,14 @@ export const AppShell = ({
             {/* CAMPANITA DE NOTIFICACIONES */}
             <button
               type="button"
+              className={`topbar-bell${badgeCount > 0 ? ' has-items' : ''}`}
               onClick={() => setNotifOpen((v) => !v)}
-              style={{
-                position: 'relative',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 6px',
-                borderRadius: 6,
-                fontSize: 20,
-                lineHeight: 1,
-                color: badgeCount > 0 ? 'var(--color-primary, #5a7cff)' : 'var(--color-muted, #888)',
-                animation: badgeCount > 0 ? 'bell-ring 1.2s ease infinite' : 'none'
-              }}
               title={badgeCount > 0 ? `${badgeCount} notificación${badgeCount !== 1 ? 'es' : ''} pendiente${badgeCount !== 1 ? 's' : ''}` : 'Sin notificaciones'}
+              aria-label={badgeCount > 0 ? `${badgeCount} notificación${badgeCount !== 1 ? 'es' : ''} pendiente${badgeCount !== 1 ? 's' : ''}` : 'Sin notificaciones'}
             >
-              🔔
+              <IconBell key={badgeCount} />
               {badgeCount > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  background: '#ef4444',
-                  color: '#fff',
-                  borderRadius: '50%',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  minWidth: 16,
-                  height: 16,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  lineHeight: 1,
-                  padding: '0 3px'
-                }}>
+                <span className="topbar-bell-badge">
                   {badgeCount > 99 ? '+99' : badgeCount}
                 </span>
               )}
@@ -427,66 +371,39 @@ export const AppShell = ({
 
       {/* CAJÓN DE NOTIFICACIONES */}
       {notifOpen && (
-        <div
-          ref={drawerRef}
-          className="no-print"
-          style={{
-            position: 'fixed',
-            top: 0,
-            right: 0,
-            width: 380,
-            height: '100vh',
-            background: 'var(--color-surface, #fff)',
-            borderLeft: '1px solid var(--color-border, #e2e8f0)',
-            boxShadow: '-8px 0 32px rgba(0,0,0,0.14)',
-            zIndex: 2000,
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
+        <div ref={drawerRef} className="no-print notif-drawer" role="dialog" aria-label="Notificaciones">
           {/* Header del cajón */}
-          <div style={{
-            padding: '16px 16px 12px',
-            borderBottom: '1px solid var(--color-border, #e2e8f0)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: 'var(--color-surface, #fff)'
-          }}>
+          <div className="notif-header">
             <div>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Notificaciones</h3>
+              <h3>Notificaciones</h3>
               {badgeCount > 0 && (
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted, #666)' }}>
+                <p>
                   {badgeCount} orden{badgeCount !== 1 ? 'es' : ''} esperando verificación · se procesan solos en 5 min
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setNotifOpen(false)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--color-muted, #888)', padding: 4 }}
-            >
-              ×
+            <button type="button" className="icon-button" aria-label="Cerrar notificaciones" onClick={() => setNotifOpen(false)}>
+              <IconClose />
             </button>
           </div>
 
           {/* Buscador */}
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--color-border, #e2e8f0)' }}>
+          <div className="notif-search">
             <input
               className="field"
               placeholder="Buscar por N° de orden o cliente..."
+              aria-label="Buscar por N° de orden o cliente"
               value={notifFilter}
               onChange={(e) => setNotifFilter(e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box' }}
             />
           </div>
 
           {/* Lista de notificaciones */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="notif-list">
             {filteredChecks.length === 0 ? (
-              <div style={{ textAlign: 'center', paddingTop: 40, color: 'var(--color-muted, #888)' }}>
-                <div style={{ fontSize: 36, marginBottom: 8 }}>🔔</div>
-                <p style={{ margin: 0, fontSize: 13 }}>
+              <div className="notif-empty">
+                <IconBell className="notif-empty-icon" />
+                <p>
                   {pendingReadyChecks.length === 0 ? 'Sin notificaciones pendientes' : 'Sin resultados para ese filtro'}
                 </p>
               </div>
@@ -495,31 +412,18 @@ export const AppShell = ({
                 const isDueTomorrow = check.type === 'DUE_TOMORROW';
                 const itemKey = isDueTomorrow ? `dt-${check.orderId}` : `rq-${check.queueId}`;
                 return (
-                <div
-                  key={itemKey}
-                  style={{
-                    padding: '12px 14px',
-                    background: isDueTomorrow ? '#eff6ff' : 'var(--color-warning-bg, #fffbeb)',
-                    border: `1px solid ${isDueTomorrow ? '#93c5fd' : 'var(--color-warning-border, #fcd34d)'}`,
-                    borderRadius: 8,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8
-                  }}
-                >
+                <div key={itemKey} className={`notif-item ${isDueTomorrow ? 'is-due' : 'is-ready-check'}`}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
+                    <div className="notif-item-title">
+                      <p>
                         {check.orderNumber} — {check.clientName}
                       </p>
                       {isDueTomorrow && (
-                        <span style={{ fontSize: 10, background: '#3b82f6', color: '#fff', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
-                          Vence mañana
-                        </span>
+                        <span className="notif-tag">Vence mañana</span>
                       )}
                     </div>
                     {check.dueDate && (
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-muted, #666)' }}>
+                      <p className="notif-item-meta">
                         Fecha promesa:{' '}
                         {new Date(check.dueDate + 'T12:00:00').toLocaleDateString('es-CO', {
                           weekday: 'short', day: 'numeric', month: 'short'
@@ -527,10 +431,9 @@ export const AppShell = ({
                       </p>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div className="notif-item-actions">
                     <button
                       className="button button-primary"
-                      style={{ fontSize: 12, padding: '5px 10px', flex: 1 }}
                       disabled={actingId === check.orderId}
                       onClick={async () => {
                         setActingId(check.orderId);
@@ -541,11 +444,10 @@ export const AppShell = ({
                         }
                       }}
                     >
-                      {actingId === check.orderId ? 'Procesando...' : 'Sí, está lista ✓'}
+                      {actingId === check.orderId ? 'Procesando...' : (<><IconCheck width={18} height={18} /> Sí, está lista</>)}
                     </button>
                     <button
                       className="button button-secondary"
-                      style={{ fontSize: 12, padding: '5px 10px' }}
                       disabled={actingId === check.orderId}
                       onClick={() => {
                         setNotifOpen(false);
@@ -567,15 +469,9 @@ export const AppShell = ({
 
           {/* Footer del cajón */}
           {pendingReadyChecks.length > 0 && (
-            <div style={{
-              padding: '12px 16px',
-              borderTop: '1px solid var(--color-border, #e2e8f0)',
-              display: 'flex',
-              justifyContent: 'flex-end'
-            }}>
+            <div className="notif-footer">
               <button
                 className="button button-secondary"
-                style={{ fontSize: 12 }}
                 onClick={() => {
                   onDismissAllNotifications();
                   setNotifOpen(false);
@@ -587,15 +483,6 @@ export const AppShell = ({
           )}
         </div>
       )}
-
-      <style>{`
-        @keyframes bell-ring {
-          0%, 100% { transform: rotate(0deg); }
-          10%, 30% { transform: rotate(-12deg); }
-          20%, 40% { transform: rotate(12deg); }
-          50% { transform: rotate(0deg); }
-        }
-      `}</style>
     </div>
   );
 };

@@ -4,6 +4,7 @@ import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import type { CatalogsPayload, Client, OrderDetail, OrderInput, PaymentLineInput } from '@shared/types';
 import { api } from '@renderer/services/api';
 import { Button, FormSection, Input, PriceInput, Select, Textarea } from '@renderer/ui/components';
+import { IconPlus } from '@renderer/ui/components/icons';
 import { currency } from '@renderer/utils/format';
 import { clientMatchesSearch } from '@renderer/utils/clientSearch';
 
@@ -487,10 +488,10 @@ export const OrderForm = ({
               onChange={(e) => setClientSearch(e.target.value)}
             />
             {searchingClients ? (
-              <small style={{ color: '#6b7280' }}>Buscando clientes...</small>
+              <small className="field-hint">Buscando clientes...</small>
             ) : null}
             {!searchingClients && clientSearch.trim().length >= 2 && clientOptions.length === 0 ? (
-              <small style={{ color: '#b45309' }}>
+              <small className="field-hint is-warning">
                 Sin coincidencias. Antes de crear un cliente nuevo, prueba con el teléfono (solo
                 números) o con el código CLI: puede estar registrado con otro nombre.
               </small>
@@ -523,7 +524,7 @@ export const OrderForm = ({
           </label>
 
           <label className="full-span">
-            <span>Notas generales <small style={{ fontWeight: 400, color: '#6b7280' }}>({NOTES_MAX} car. máx.)</small></span>
+            <span>Notas generales <small className="label-hint">({NOTES_MAX} car. máx.)</small></span>
             <Textarea
               {...register('notes', { maxLength: { value: NOTES_MAX, message: `Máximo ${NOTES_MAX} caracteres` } })}
               maxLength={NOTES_MAX}
@@ -535,13 +536,12 @@ export const OrderForm = ({
 
       <FormSection title="Orden manual / libreta física">
         <div className="form-grid">
-          <label className="full-span" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label className="full-span check-row">
             <input
               type="checkbox"
               {...register('isManual')}
-              style={{ width: 18, height: 18 }}
             />
-            <span style={{ fontWeight: 600 }}>
+            <span>
               Esta orden viene de una factura/libreta física (consecutivo de papel)
             </span>
           </label>
@@ -719,7 +719,7 @@ export const OrderForm = ({
                   </label>
 
                   <label className="full-span">
-                    <span>Observaciones <small style={{ fontWeight: 400, color: '#6b7280' }}>({OBS_MAX} car. máx.)</small></span>
+                    <span>Observaciones <small className="label-hint">({OBS_MAX} car. máx.)</small></span>
                     <Textarea
                       {...register(`items.${index}.customerObservations` as const, {
                         maxLength: { value: OBS_MAX, message: `Máximo ${OBS_MAX} caracteres` }
@@ -732,14 +732,14 @@ export const OrderForm = ({
                     )}
                   </label>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>Subtotal ítem</span>
-                    <strong style={{ fontSize: 15 }}>{currency(itemSubtotal)}</strong>
+                  <div className="item-amount">
+                    <span>Subtotal ítem</span>
+                    <strong>{currency(itemSubtotal)}</strong>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>Total ítem</span>
-                    <strong style={{ fontSize: 15, color: '#2563eb' }}>{currency(itemTotal)}</strong>
+                  <div className="item-amount is-total">
+                    <span>Total ítem</span>
+                    <strong>{currency(itemTotal)}</strong>
                   </div>
                 </div>
 
@@ -758,25 +758,8 @@ export const OrderForm = ({
 
           <Button
             type="button"
-            variant="primary"
-            style={{
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              color: '#ffffff',
-              fontWeight: 600,
-              borderRadius: 12,
-              padding: '12px 18px',
-              boxShadow: '0 6px 18px rgba(37, 99, 235, 0.35)',
-              transition: 'all 0.2s ease',
-              border: 'none'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 10px 24px rgba(37, 99, 235, 0.45)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 6px 18px rgba(37, 99, 235, 0.35)';
-            }}
+            variant="secondary"
+            className="button-add"
             onClick={() =>
               appendItem({
                 garmentTypeId: null,
@@ -804,7 +787,7 @@ export const OrderForm = ({
               })
             }
           >
-            + Agregar ítem
+            <IconPlus width={20} height={20} /> Agregar ítem
           </Button>
         </div>
       </FormSection>
@@ -818,7 +801,7 @@ export const OrderForm = ({
           <span>Descuento</span>
           <strong>{currency(displayDiscount)}</strong>
         </div>
-        <div className="total-box">
+        <div className="total-box is-total">
           <span>Total</span>
           <strong>{currency(total)}</strong>
         </div>
@@ -828,7 +811,7 @@ export const OrderForm = ({
             <strong>{currency(registeredPaidAmount)}</strong>
           </div>
         ) : null}
-        <div className="total-box">
+        <div className={`total-box${balance > 0 ? ' is-debt' : ''}`}>
           <span>Saldo</span>
           <strong>{currency(balance)}</strong>
         </div>
@@ -836,23 +819,23 @@ export const OrderForm = ({
 
       <FormSection title="Descuentos y abono">
         {displayDiscount > 0 && (
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>
+          <div className="form-note">
             Descuento global (calculado de ítems):{' '}
             <strong>{currency(displayDiscount)}</strong>
           </div>
         )}
 
         {!hideInitialPaymentFields && (
-          <div className="stack-gap" style={{ marginTop: 12 }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
+          <div className="stack-gap">
+            <p className="form-subtitle">
               Abono inicial{' '}
-              <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
+              <span className="label-hint">
                 (opcional — puedes agregar varios métodos de pago)
               </span>
             </p>
 
             {paymentFields.map((field, index) => (
-              <div key={field.id} className="card-panel" style={{ padding: '12px 16px' }}>
+              <div key={field.id} className="item-card">
                 <div className="form-grid">
                   <label>
                     <span>Método de pago</span>
@@ -884,7 +867,7 @@ export const OrderForm = ({
                   </label>
 
                   {paymentFields.length > 1 && (
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <div className="align-end">
                       <Button type="button" variant="danger" onClick={() => removePayment(index)}>
                         Quitar
                       </Button>
@@ -894,13 +877,13 @@ export const OrderForm = ({
               </div>
             ))}
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="inline-actions">
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => appendPayment(emptyPaymentLine(defaultMethodId))}
               >
-                + Agregar método de pago
+                <IconPlus width={18} height={18} /> Agregar método de pago
               </Button>
 
               {paymentFields.length > 0 && (
@@ -916,7 +899,7 @@ export const OrderForm = ({
               )}
             </div>
 
-            <div style={{ fontSize: 13, color: '#374151' }}>
+            <div className="form-note">
               Total abono: <strong>{currency(initialPaidAmount)}</strong>
               {' · '}Saldo tras abono: <strong>{currency(Math.max(0, total - initialPaidAmount))}</strong>
             </div>
@@ -926,7 +909,7 @@ export const OrderForm = ({
 
       <div className="form-actions">
         {submitError ? <p className="error-text">{submitError}</p> : null}
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" className="button-lg" disabled={isSubmitting}>
           {isSubmitting ? submittingLabel : submitLabel}
         </Button>
       </div>

@@ -210,7 +210,7 @@ export const NewOrderPage = () => {
       <PageHeader title="Nueva orden" />
       <div className="card-panel">
         {restoredDraft ? (
-          <p className="alert-warning" style={{ marginTop: 0 }}>
+          <p className="alert-warning">
             Se restauró un borrador temporal de la orden anterior.
           </p>
         ) : null}

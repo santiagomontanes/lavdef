@@ -4,6 +4,7 @@ import { api } from '@renderer/services/api';
 import { DataTable, PageHeader, SummaryCard } from '@renderer/ui/components';
 import { currency } from '@renderer/utils/format';
 import { ReadyQueueWidget } from '@renderer/modules/ready-queue/components/ReadyQueueWidget';
+import { IconBox, IconCash, IconChart, IconClipboard, IconPlus, IconReceipt } from '@renderer/ui/components/icons';
 
 export const DashboardPage = () => {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboardSummary });
@@ -14,39 +15,39 @@ export const DashboardPage = () => {
 
   return (
     <section className="stack-gap">
-      <PageHeader title="Inicio" subtitle="Resumen comercial y operativo del día." actions={<Link className="button button-primary" to="/ordenes/nueva">Nueva orden</Link>} />
-      <div className="row-actions">
-        <Link className="button button-secondary" to="/ordenes">Ver órdenes</Link>
-        <Link className="button button-secondary" to="/entregas">Inventario</Link>
-        <Link className="button button-secondary" to="/facturacion">Facturación</Link>
-        <Link className="button button-secondary" to="/caja">Caja</Link>
-        <Link className="button button-secondary" to="/reportes">Reportes</Link>
+      <PageHeader title="Inicio" subtitle="Resumen comercial y operativo del día." actions={<Link className="button button-primary button-lg" to="/ordenes/nueva"><IconPlus width={20} height={20} /> Nueva orden</Link>} />
+      <nav className="quick-actions" aria-label="Accesos rápidos">
+        <Link className="quick-action" to="/ordenes"><IconClipboard /> <span>Ver órdenes</span></Link>
+        <Link className="quick-action" to="/entregas"><IconBox /> <span>Inventario</span></Link>
+        <Link className="quick-action" to="/facturacion"><IconReceipt /> <span>Facturación</span></Link>
+        <Link className="quick-action" to="/caja"><IconCash /> <span>Caja</span></Link>
+        <Link className="quick-action" to="/reportes"><IconChart /> <span>Reportes</span></Link>
+      </nav>
+      <div className="summary-grid">
+        <SummaryCard title="Clientes" value={String(data?.clients ?? 0)} accent="var(--primary)" />
+        <SummaryCard title="Órdenes abiertas" value={String(data?.openOrders ?? 0)} accent="var(--st-progress-dot)" />
+        <SummaryCard title="Ventas del día" value={currency(data?.dailySales ?? 0)} accent="var(--st-ready-dot)" />
+        <SummaryCard title="Gastos del día" value={currency(data?.dailyExpenses ?? 0)} accent="var(--st-debt-dot)" />
       </div>
       <div className="summary-grid">
-        <SummaryCard title="Clientes" value={String(data?.clients ?? 0)} accent="#5a7cff" />
-        <SummaryCard title="Órdenes abiertas" value={String(data?.openOrders ?? 0)} accent="#c29c6a" />
-        <SummaryCard title="Ventas del día" value={currency(data?.dailySales ?? 0)} accent="#5fae88" />
-        <SummaryCard title="Gastos del día" value={currency(data?.dailyExpenses ?? 0)} accent="#c97373" />
-      </div>
-      <div className="summary-grid">
-        <SummaryCard title="Saldo pendiente" value={currency(data?.pendingBalance ?? 0)} accent="#d89d4f" />
-        <SummaryCard title="Garantías abiertas" value={String(data?.openWarranties ?? 0)} accent="#e0ab55" />
-        <SummaryCard title="Pagos de hoy" value={currency(paymentTotalToday)} accent="#6786a8" />
-        <SummaryCard title="Órdenes recientes" value={String(data?.recentOrders.length ?? 0)} accent="#7a8a94" />
+        <SummaryCard title="Saldo pendiente" value={currency(data?.pendingBalance ?? 0)} accent="var(--warning)" />
+        <SummaryCard title="Garantías abiertas" value={String(data?.openWarranties ?? 0)} accent="var(--st-progress-dot)" />
+        <SummaryCard title="Pagos de hoy" value={currency(paymentTotalToday)} accent="var(--st-delivered-dot)" />
+        <SummaryCard title="Órdenes recientes" value={String(data?.recentOrders.length ?? 0)} accent="var(--st-created-dot)" />
       </div>
       <ReadyQueueWidget />
       <div className="split-grid">
         <div className="card-panel">
-          <h3>Órdenes recientes</h3>
+          <h3 className="card-title">Órdenes recientes</h3>
           <DataTable rows={data?.recentOrders ?? []} columns={[
             { key: 'number', header: 'Orden', render: (row) => row.orderNumber },
             { key: 'client', header: 'Cliente', render: (row) => row.clientName },
-            { key: 'total', header: 'Total', render: (row) => currency(row.total) },
-            { key: 'balance', header: 'Saldo', render: (row) => currency(row.balanceDue) }
+            { key: 'total', header: 'Total', render: (row) => <strong>{currency(row.total)}</strong> },
+            { key: 'balance', header: 'Saldo', render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span> }
           ]} />
         </div>
         <div className="card-panel">
-          <h3>Resumen por método</h3>
+          <h3 className="card-title">Resumen por método</h3>
           <DataTable rows={data?.paymentBreakdown ?? []} columns={[
             { key: 'method', header: 'Método', render: (row) => row.methodName },
             { key: 'amount', header: 'Monto', render: (row) => currency(row.amount) }

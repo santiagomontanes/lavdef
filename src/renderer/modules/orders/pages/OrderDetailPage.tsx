@@ -11,6 +11,7 @@ import {
   PageHeader,
   StatusChip
 } from '@renderer/ui/components';
+import { IconBack } from '@renderer/ui/components/icons';
 import { currency, dateTime } from '@renderer/utils/format';
 import { showToast } from '@renderer/utils/toast';
 import { PaymentForm } from '@renderer/modules/payments/components/PaymentForm';
@@ -548,7 +549,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
                 <strong>{data.clientName}</strong>
               </div>
 
-              <div className="detail-row" style={{ alignItems: 'center' }}>
+              <div className="detail-row is-centered">
                 <span>Estado actual</span>
                 <StatusChip label={data.statusName} color={data.statusColor} />
               </div>
@@ -580,14 +581,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
                 <strong>{data.dueDate ? dateTime(data.dueDate) : '—'}</strong>
               </div>
 
-              <div
-  className="detail-row"
-  style={{
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 6
-  }}
->
+              <div className="detail-row is-stacked">
   <span>Notas</span>
 
   <textarea
@@ -597,18 +591,11 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
       setNotes(e.target.value);
     }}
     placeholder="Escribe notas de la orden..."
-    style={{
-      width: '100%',
-      minHeight: 60,
-      resize: 'vertical',
-      padding: 6,
-      fontSize: 13,
-      border: '1px solid #ccc',
-      borderRadius: 4
-    }}
+    aria-label="Notas de la orden"
+    className="field notes-field"
   />
 
-  <div style={{ display: 'flex', gap: 8 }}>
+  <div className="inline-actions">
     <Button
       onClick={() => requestProtectedAction('notes')}
       disabled={saveNotesMutation.isPending || verifyPasswordMutation.isPending}
@@ -658,7 +645,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
                   <strong>{surchargeReasons.join(' · ')}</strong>
                 </div>
               ) : null}
-              <div className="detail-row">
+              <div className="detail-row is-total">
                 <span>Total</span>
                 <strong>{currency(data.total)}</strong>
               </div>
@@ -666,7 +653,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
                 <span>Pagado</span>
                 <strong>{currency(data.paidTotal)}</strong>
               </div>
-              <div className="detail-row">
+              <div className={`detail-row is-total${data.balanceDue > 0 ? ' is-debt' : ' is-paid'}`}>
                 <span>Saldo</span>
                 <strong>{currency(data.balanceDue)}</strong>
               </div>
@@ -699,16 +686,16 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
         actions={
   <div className="row-actions">
     <Link className="button button-secondary" to="/ordenes">
-      ← Volver
+      <IconBack width={18} height={18} /> Volver
     </Link>
 
     {!isCashOpen && (
-      <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600, alignSelf: 'center' }}>
+      <span className="inline-warning">
         Abre caja primero
       </span>
     )}
     <Button
-      style={{ background: isCashOpen ? '#16a34a' : '#9ca3af', color: '#fff', border: 'none' }}
+      className="button-success"
       disabled={!isCashOpen}
       onClick={() => setPaymentModal(true)}
       title={isCashOpen ? 'Registrar pago' : 'Caja cerrada — ábrela primero'}
@@ -717,22 +704,21 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
     </Button>
 
     <Link
-      className="button"
-      style={{ background: '#7c3aed', color: '#fff', border: 'none' }}
+      className="button button-secondary"
       to={`/facturas/${data.id}`}
     >
       Factura
     </Link>
 
     <Button
-      style={{ background: '#2563eb', color: '#fff', border: 'none' }}
+      variant="secondary"
       onClick={() => navigate(`/entregas?orderId=${data.id}&open=1`)}
     >
       Entregar
     </Button>
 
     <Button
-      style={{ background: '#d97706', color: '#fff', border: 'none' }}
+      variant="secondary"
       onClick={() => requestProtectedAction('edit')}
       disabled={isCanceledOrder || isDeliveredOrder}
       title={
@@ -784,7 +770,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
         onClose={() => setPaymentModal(false)}
       >
         {paymentMutation.isError && (
-          <p className="error-text" style={{ marginBottom: 12 }}>
+          <p className="error-text error-block">
             {(paymentMutation.error as Error).message}
           </p>
         )}
@@ -809,12 +795,12 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
         }}
       >
         <div className="stack-gap">
-          <p className="alert-warning" style={{ marginTop: 0 }}>
+          <p className="alert-warning">
             Esta acción no borra el pago, lo anula y ajusta caja/reportes.
           </p>
 
           {selectedPayment ? (
-            <div className="card-panel" style={{ background: '#f8fafc' }}>
+            <div className="card-panel card-muted">
               <div className="detail-row">
                 <span>Método</span>
                 <strong>{selectedPayment.paymentMethodName}</strong>
@@ -888,7 +874,7 @@ export const OrderDetailPage = ({ user }: { user: SessionUser }) => {
         onClose={() => setEditModal(false)}
       >
         {restoredEditDraft ? (
-          <p className="alert-warning" style={{ marginTop: 0 }}>
+          <p className="alert-warning">
             Se restauró un borrador temporal de esta edición.
           </p>
         ) : null}

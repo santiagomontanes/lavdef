@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@renderer/services/api';
 import type { ReadyQueueItem } from '@shared/types';
+import { IconCheck } from '@renderer/ui/components/icons';
 
 const currency = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -61,68 +62,42 @@ export const ReadyQueueWidget = () => {
   if (pendingCount === 0 && !expanded) return null;
 
   return (
-    <div
-      className="card-panel"
-      style={{ borderLeft: '4px solid var(--color-primary, #5a7cff)' }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-          userSelect: 'none'
-        }}
+    <div className="card-panel rq-panel">
+      <button
+        type="button"
+        className="rq-toggle"
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h3 style={{ margin: 0 }}>Cola de órdenes listas</h3>
+        <span className="rq-toggle-title">
+          <span className="card-title">Cola de órdenes listas</span>
           {pendingCount > 0 && (
-            <span
-              style={{
-                background: '#ef4444',
-                color: '#fff',
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '2px 8px',
-                lineHeight: '18px'
-              }}
-            >
+            <span className="count-pill is-danger">
               {pendingCount} pendiente{pendingCount !== 1 ? 's' : ''}
             </span>
           )}
           {stats && stats.confirmedTodayCount > 0 && (
-            <span
-              style={{
-                background: '#22c55e',
-                color: '#fff',
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '2px 8px',
-                lineHeight: '18px'
-              }}
-            >
+            <span className="count-pill is-success">
               {stats.confirmedTodayCount} confirmada{stats.confirmedTodayCount !== 1 ? 's' : ''}
             </span>
           )}
-        </div>
-        <span style={{ fontSize: 12, color: 'var(--color-muted, #888)' }}>
-          {expanded ? '▲ Ocultar' : '▼ Ver detalles'}
         </span>
-      </div>
+        <span className="rq-toggle-hint">
+          {expanded ? 'Ocultar' : 'Ver detalles'}
+          <span className={`chevron${expanded ? ' is-open' : ''}`} aria-hidden="true" />
+        </span>
+      </button>
 
       {expanded && (
-        <div style={{ marginTop: 14 }}>
+        <div className="rq-body">
           {isLoading ? (
-            <p style={{ color: 'var(--color-muted, #888)', fontSize: 13 }}>Cargando...</p>
+            <p className="muted-text">Cargando...</p>
           ) : items.length === 0 ? (
-            <p style={{ color: 'var(--color-muted, #888)', fontSize: 13 }}>
+            <p className="muted-text">
               No hay órdenes pendientes en la cola de hoy.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="rq-list">
               {items.map((item) => (
                 <ReadyQueueRow
                   key={item.id}
@@ -144,15 +119,7 @@ export const ReadyQueueWidget = () => {
 
       {rescheduleId !== null && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }}
+          className="modal-backdrop rq-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setRescheduleId(null);
@@ -160,15 +127,10 @@ export const ReadyQueueWidget = () => {
             }
           }}
         >
-          <div
-            className="card-panel"
-            style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 14 }}
-          >
-            <h3 style={{ margin: 0 }}>Reagendar fecha promesa</h3>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>
-                Nueva fecha prometida
-              </label>
+          <div className="card-panel rq-dialog" role="dialog" aria-modal="true" aria-labelledby="rq-reschedule-title">
+            <h3 id="rq-reschedule-title">Reagendar fecha promesa</h3>
+            <label>
+              Nueva fecha prometida
               <input
                 type="date"
                 className="field"
@@ -176,9 +138,9 @@ export const ReadyQueueWidget = () => {
                 onChange={(e) => setRescheduleDate(e.target.value)}
                 min={new Date().toISOString().slice(0, 10)}
               />
-            </div>
+            </label>
             {rescheduleError && (
-              <p className="error-text" style={{ margin: 0 }}>
+              <p className="error-text">
                 {rescheduleError}
               </p>
             )}
@@ -224,40 +186,19 @@ const ReadyQueueRow = ({ item, onConfirm, onSkip, onReschedule, isActing }: RowP
     : null;
 
   return (
-    <div
-      style={{
-        padding: '12px 14px',
-        background: isConfirmed
-          ? 'var(--color-success-bg, #f0fdf4)'
-          : 'var(--color-warning-bg, #fffbeb)',
-        border: `1px solid ${isConfirmed ? 'var(--color-success-border, #86efac)' : 'var(--color-warning-border, #fcd34d)'}`,
-        borderRadius: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className={`rq-row ${isConfirmed ? 'is-confirmed' : 'is-pending'}`}>
+      <div className="rq-row-top">
         <div>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>{item.orderNumber}</span>
+          <strong>{item.orderNumber}</strong>
           {' — '}
-          <span style={{ fontSize: 13 }}>{item.clientName}</span>
+          <span>{item.clientName}</span>
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            padding: '2px 6px',
-            borderRadius: 4,
-            background: isConfirmed ? '#22c55e' : '#f59e0b',
-            color: '#fff',
-            fontWeight: 600
-          }}
-        >
+        <span className="status-chip" data-color={isConfirmed ? 'green' : 'amber'}>
           {isConfirmed ? 'Confirmada' : 'Pendiente'}
         </span>
       </div>
 
-      <div style={{ fontSize: 12, color: 'var(--color-muted, #666)', display: 'flex', gap: 16 }}>
+      <div className="rq-row-meta">
         {item.dueDate && (
           <span>
             Vence:{' '}
@@ -268,25 +209,23 @@ const ReadyQueueRow = ({ item, onConfirm, onSkip, onReschedule, isActing }: RowP
             })}
           </span>
         )}
-        <span>Saldo: {currency(item.balanceDue)}</span>
+        <span className={item.balanceDue > 0 ? 'amount-debt' : undefined}>Saldo: {currency(item.balanceDue)}</span>
         <span>{item.itemCount} prenda{item.itemCount !== 1 ? 's' : ''}</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="rq-row-actions">
         {!isConfirmed && (
           <button
             className="button button-primary"
-            style={{ fontSize: 12, padding: '4px 10px' }}
             disabled={isActing}
             onClick={onConfirm}
           >
-            Sí, está lista ✓ (enviar WA)
+            <IconCheck width={18} height={18} /> Sí, está lista (enviar WA)
           </button>
         )}
         {isConfirmed && whatsappUrl && (
           <button
             className="button button-secondary"
-            style={{ fontSize: 12, padding: '4px 10px' }}
             onClick={() => window.desktopApi.openExternal({ url: whatsappUrl })}
           >
             Reenviar WhatsApp
@@ -294,7 +233,6 @@ const ReadyQueueRow = ({ item, onConfirm, onSkip, onReschedule, isActing }: RowP
         )}
         <button
           className="button button-secondary"
-          style={{ fontSize: 12, padding: '4px 10px' }}
           disabled={isActing}
           onClick={onReschedule}
         >
@@ -302,8 +240,7 @@ const ReadyQueueRow = ({ item, onConfirm, onSkip, onReschedule, isActing }: RowP
         </button>
         {!isConfirmed && (
           <button
-            className="button button-secondary"
-            style={{ fontSize: 12, padding: '4px 10px', color: 'var(--color-muted, #888)' }}
+            className="button button-ghost"
             disabled={isActing}
             onClick={onSkip}
           >

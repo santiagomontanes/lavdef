@@ -1133,12 +1133,12 @@ export const CashPage = () => {
           <h3>Apertura de caja</h3>
 
           {data?.lastClosure && (
-            <div className="card-panel" style={{ background: '#f8fafc' }}>
+            <div className="card-panel card-muted">
               <strong>Último cierre</strong>
-              <p style={{ margin: '8px 0 0' }}>
+              <p className="text-tight">
                 Cerrado: {dateTime(data.lastClosure.closedAt)}
               </p>
-              <p style={{ margin: '4px 0 0' }}>
+              <p className="text-tight">
                 Monto declarado: {currency(data.lastClosure.declaredAmount)}
               </p>
             </div>
@@ -1175,7 +1175,7 @@ export const CashPage = () => {
           </label>
 
           {openingPresets.length ? (
-            <div className="card-panel stack-gap" style={{ background: '#f8fafc' }}>
+            <div className="card-panel stack-gap card-muted">
               <strong>Últimos datos usados</strong>
               {openingPresets.map((preset, index) => (
                 <div
@@ -1184,7 +1184,7 @@ export const CashPage = () => {
                 >
                   <div>
                     <strong>{preset.openedByName}</strong>
-                    <p style={{ margin: '4px 0 0' }}>
+                    <p className="text-tight">
                       {preset.openedByPhone || 'Sin celular'} | Admin: {preset.adminWhatsapp || 'Sin WhatsApp'}
                     </p>
                   </div>
@@ -1209,7 +1209,7 @@ export const CashPage = () => {
           </label>
 
           <div className="form-actions">
-            <Button onClick={handleOpenCash} disabled={openMutation.isPending}>
+            <Button className="button-lg" onClick={handleOpenCash} disabled={openMutation.isPending}>
               {openMutation.isPending ? 'Abriendo...' : 'Abrir caja'}
             </Button>
           </div>
@@ -1226,22 +1226,22 @@ export const CashPage = () => {
             <SummaryCard
               title="Caja activa"
               value={`#${data.activeSession.id}`}
-              accent="#5a7cff"
+              accent="var(--primary)"
             />
             <SummaryCard
               title="Apertura"
               value={currency(data.activeSession.openingAmount)}
-              accent="#a67c52"
+              accent="var(--st-progress-dot)"
             />
             <SummaryCard
               title="Abierta"
               value={dateTime(data.activeSession.openedAt)}
-              accent="#63b08c"
+              accent="var(--st-ready-dot)"
             />
             <SummaryCard
               title="Estado"
               value={data.activeSession.status}
-              accent="#d5a24f"
+              accent="var(--warning)"
             />
           </div>
 
@@ -1249,27 +1249,27 @@ export const CashPage = () => {
             <SummaryCard
               title="Esperado en efectivo"
               value={currency(cashOnlyAmount)}
-              accent="#1e8a4f"
+              accent="var(--success)"
             />
             <SummaryCard
               title="Total sistema (todos los métodos)"
               value={currency(systemAmount)}
-              accent="#6786a8"
+              accent="var(--st-delivered-dot)"
             />
             <SummaryCard
               title="Ventas sesión"
               value={currency(totalSessionSales)}
-              accent="#5fae88"
+              accent="var(--st-ready-dot)"
             />
             <SummaryCard
               title="Gastos sesión"
               value={currency(data.totalExpenses ?? 0)}
-              accent="#c97373"
+              accent="var(--st-debt-dot)"
             />
             <SummaryCard
               title="Último cierre"
               value={currency(data.lastClosure?.declaredAmount ?? 0)}
-              accent="#7a8a94"
+              accent="var(--st-created-dot)"
             />
           </div>
 
@@ -1278,17 +1278,17 @@ export const CashPage = () => {
               <SummaryCard
                 title="Ingresos manuales"
                 value={currency(manualCashIn)}
-                accent="#1e8a4f"
+                accent="var(--success)"
               />
               <SummaryCard
                 title="Egresos manuales"
                 value={currency(manualCashOut)}
-                accent="#c97373"
+                accent="var(--st-debt-dot)"
               />
               <SummaryCard
                 title="Devoluciones efectivo"
                 value={currency(cashRefunds)}
-                accent="#a06b1e"
+                accent="var(--warning)"
               />
             </div>
           )}
@@ -1355,12 +1355,12 @@ export const CashPage = () => {
                 <strong>{currency(data.totalExpenses ?? 0)}</strong>
               </div>
 
-              <div className="detail-row" style={{ background: '#ecfdf5', borderRadius: 6, padding: 8 }}>
+              <div className="detail-row is-highlight">
                 <span><strong>Esperado en efectivo (a contar)</strong></span>
-                <strong style={{ color: '#15803d' }}>{currency(cashOnlyAmount)}</strong>
+                <strong>{currency(cashOnlyAmount)}</strong>
               </div>
 
-              <div className="detail-row" style={{ fontSize: 12, opacity: 0.8 }}>
+              <div className="detail-row is-minor">
                 <span>Total sistema (todos los métodos)</span>
                 <span>{currency(systemAmount)}</span>
               </div>
@@ -1381,7 +1381,7 @@ export const CashPage = () => {
                   Usar valor esperado
                 </Button>
 
-                <Button onClick={() => closeMutation.mutate(declaredAmount)}>
+                <Button className="button-lg" onClick={() => closeMutation.mutate(declaredAmount)}>
                   Cerrar caja
                 </Button>
               </div>
@@ -1435,11 +1435,11 @@ export const CashPage = () => {
                 </div>
 
                 {openDrawerMutation.data && (
-                  <div className="card-panel" style={{ background: '#f8fafc' }}>
-                    <p style={{ margin: 0 }}>
+                  <div className="card-panel card-muted">
+                    <p className="text-tight">
                       <strong>Resultado:</strong> {openDrawerMutation.data.message}
                     </p>
-                    <p style={{ margin: '6px 0 0' }}>
+                    <p className="text-tight">
                       <strong>Impresora:</strong> {openDrawerMutation.data.printerName}
                     </p>
                   </div>
@@ -1475,7 +1475,7 @@ export const CashPage = () => {
 
           <div className="card-panel stack-gap">
             <h3>Movimiento manual de caja</h3>
-            <p style={{ margin: 0, fontSize: 13, opacity: 0.75 }}>
+            <p className="muted-text">
               Registra ingresos (préstamos, base extra) o egresos (retiros, fondo) que afecten el efectivo en caja.
             </p>
 
@@ -1550,62 +1550,53 @@ export const CashPage = () => {
       )}
 
       {closurePreview && (
-        <div className="card-panel stack-gap" style={{ background: '#f8fafc' }}>
+        <div className="card-panel stack-gap card-muted">
           <h3>Último cierre generado</h3>
 
-          <div
-            style={{
-              background: '#ecfdf5',
-              padding: 12,
-              borderRadius: 6,
-              border: '1px solid #bbf7d0'
-            }}
-          >
-            <p style={{ margin: 0 }}>
+          <div className="closure-result">
+            <p className="text-tight">
               <strong>Esperado en efectivo:</strong>{' '}
-              <span style={{ color: '#15803d', fontWeight: 700 }}>
+              <span className="amount-positive">
                 {currency(closurePreview.cashOnlyAmount ?? closurePreview.systemAmount)}
               </span>
             </p>
-            <p style={{ margin: '6px 0 0' }}>
+            <p className="text-tight">
               <strong>Declarado:</strong> {currency(closurePreview.declaredAmount)}
             </p>
-            <p style={{ margin: '6px 0 0' }}>
+            <p className="text-tight">
               <strong>Diferencia (efectivo):</strong>{' '}
               <span
-                style={{
-                  color:
-                    closurePreview.differenceAmount === 0
-                      ? '#15803d'
-                      : closurePreview.differenceAmount > 0
-                      ? '#1e8a4f'
-                      : '#b91c1c',
-                  fontWeight: 700
-                }}
+                className={
+                  closurePreview.differenceAmount === 0
+                    ? 'diff-zero'
+                    : closurePreview.differenceAmount > 0
+                    ? 'diff-pos'
+                    : 'diff-neg'
+                }
               >
                 {currency(closurePreview.differenceAmount)}
               </span>
             </p>
           </div>
 
-          <p style={{ margin: 0, fontSize: 12, opacity: 0.7 }}>
+          <p className="muted-text">
             Total sistema (todos los métodos, informativo):{' '}
             {currency(closurePreview.systemAmount)}
           </p>
 
-          <p style={{ margin: 0 }}>
+          <p className="text-tight">
             <strong>Abrió caja:</strong> {closurePreview.openedByName || '—'}
           </p>
-          <p style={{ margin: '6px 0 0' }}>
+          <p className="text-tight">
             <strong>Celular:</strong> {closurePreview.openedByPhone || '—'}
           </p>
 
-          <div className="form-actions" style={{ marginTop: 12 }}>
+          <div className="form-actions">
             <Button variant="secondary" onClick={handleSaveClosurePdf}>
               Guardar PDF
             </Button>
             {!isHardwareSupported ? (
-              <div className="alert-warning" style={{ width: '100%' }}>
+              <div className="alert-warning full-width">
                 {hardwareMessage}
               </div>
             ) : (
@@ -1618,8 +1609,8 @@ export const CashPage = () => {
       )}
 
       <div className="card-panel stack-gap">
-        <div className="form-actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>Últimos 5 cierres de caja</h3>
+        <div className="form-actions section-head">
+          <h3>Últimos 5 cierres de caja</h3>
           <Button
             type="button"
             variant="secondary"
@@ -1651,16 +1642,7 @@ export const CashPage = () => {
               header: 'Diferencia',
               render: (row) => (
                 <span
-                  style={{
-                    color:
-                      row.differenceAmount === 0
-                        ? '#15803d'
-                        : row.differenceAmount > 0
-                        ? '#1e8a4f'
-                        : '#b91c1c',
-                    fontWeight: 600
-                  }}
-                >
+                  className={row.differenceAmount === 0 ? 'diff-zero' : row.differenceAmount > 0 ? 'diff-pos' : 'diff-neg'}                >
                   {currency(row.differenceAmount)}
                 </span>
               )
@@ -1809,7 +1791,7 @@ export const CashPage = () => {
         }}
       >
         <div className="stack-gap">
-          <p style={{ margin: 0 }}>
+          <p className="text-tight">
             Ingresa la misma contraseña administrativa usada para editar órdenes.
           </p>
 
@@ -1898,16 +1880,7 @@ export const CashPage = () => {
                 header: 'Diferencia',
                 render: (row) => (
                   <span
-                    style={{
-                      color:
-                        row.differenceAmount === 0
-                          ? '#15803d'
-                          : row.differenceAmount > 0
-                          ? '#1e8a4f'
-                          : '#b91c1c',
-                      fontWeight: 600
-                    }}
-                  >
+                    className={row.differenceAmount === 0 ? 'diff-zero' : row.differenceAmount > 0 ? 'diff-pos' : 'diff-neg'}                  >
                     {currency(row.differenceAmount)}
                   </span>
                 )

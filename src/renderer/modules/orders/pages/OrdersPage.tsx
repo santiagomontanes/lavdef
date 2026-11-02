@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '@renderer/services/api';
 import { DataTable, Input, Modal, PageHeader, StatusChip } from '@renderer/ui/components';
+import { IconPlus } from '@renderer/ui/components/icons';
 import { currency, dateTime } from '@renderer/utils/format';
 import { normalizeScan } from '@renderer/utils/normalize';
 
@@ -270,15 +271,15 @@ export const OrdersPage = () => {
         title="Órdenes"
         subtitle="Listado comercial con acciones rápidas sobre cada orden."
         actions={
-          <Link className="button button-primary" to="/ordenes/nueva">
-            Nueva orden
+          <Link className="button button-primary button-lg" to="/ordenes/nueva">
+            <IconPlus width={20} height={20} /> Nueva orden
           </Link>
         }
       />
 
       <div className="card-panel">
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 280px', minWidth: 260 }}>
+        <div className="toolbar">
+          <div className="toolbar-grow">
             <Input
               placeholder="Buscar por orden, cliente o escanear código"
               value={search}
@@ -288,8 +289,8 @@ export const OrdersPage = () => {
           </div>
 
           <select
-            className="field"
-            style={{ maxWidth: 260 }}
+            className="field toolbar-select"
+            aria-label="Filtrar por estado"
             value={statusFilter}
             onChange={(e) =>
               setStatusFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))
@@ -311,11 +312,11 @@ export const OrdersPage = () => {
               key: 'number',
               header: 'Consecutivo',
               render: (row) => (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span>{row.orderNumber}</span>
+                <div className="cell-stack">
+                  <strong>{row.orderNumber}</strong>
                   {row.isManual && row.manualOrderNumber ? (
-                    <small style={{ color: '#92400e', fontWeight: 600 }}>
-                      📝 Manual: {row.manualOrderNumber}
+                    <small className="tag-manual">
+                      Manual: {row.manualOrderNumber}
                     </small>
                   ) : null}
                 </div>
@@ -357,12 +358,12 @@ export const OrdersPage = () => {
             {
               key: 'total',
               header: 'Total',
-              render: (row) => currency(row.total)
+              render: (row) => <strong>{currency(row.total)}</strong>
             },
             {
               key: 'balance',
               header: 'Saldo',
-              render: (row) => currency(row.balanceDue)
+              render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span>
             },
             {
               key: 'date',
@@ -384,23 +385,14 @@ export const OrdersPage = () => {
           ]}
         />
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 14,
-            flexWrap: 'wrap',
-            gap: 8
-          }}
-        >
-          <small style={{ color: '#6b7280' }}>
+        <div className="pager">
+          <small className="muted-text">
             {total > 0
               ? `Página ${page} de ${totalPages} · ${total} orden${total === 1 ? '' : 'es'} en total`
               : 'Sin órdenes para este filtro.'}
             {isFetchingOrders ? ' · Actualizando...' : ''}
           </small>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="pager-actions">
             <button
               type="button"
               className="button button-secondary"
@@ -432,7 +424,7 @@ export const OrdersPage = () => {
         }}
       >
         <div className="stack-gap">
-          <p style={{ marginTop: 0 }}>
+          <p className="modal-lead">
             Ingresa la contraseña de administrador para cambiar el estado de la orden.
           </p>
           <input
