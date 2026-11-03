@@ -122,8 +122,8 @@ export const WhatsappPage = () => {
       />
 
       <div className="card-panel stack-gap">
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 280px' }}>
+        <div className="toolbar is-flush">
+          <div className="toolbar-grow">
             <label>
               <span>Buscar orden</span>
               <Input
@@ -134,7 +134,7 @@ export const WhatsappPage = () => {
             </label>
           </div>
 
-          <div style={{ flex: '1 1 280px' }}>
+          <div className="toolbar-grow">
             <label>
               <span>Orden</span>
               <select
@@ -154,16 +154,7 @@ export const WhatsappPage = () => {
         </div>
 
         {!selectedOrder && (
-          <p style={{
-            margin: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            color: 'var(--color-text-secondary)',
-            padding: '8px 12px',
-            background: 'var(--color-background-secondary)',
-            borderRadius: 'var(--border-radius-md)',
-            border: '0.5px solid var(--color-border-tertiary)',
-          }}>
+          <p className="note-muted">
             Selecciona una orden para cargar los datos del cliente y las plantillas de mensajes.
           </p>
         )}
@@ -186,16 +177,9 @@ export const WhatsappPage = () => {
           </div>
         </div>
 
-        <div style={{
-          opacity: selectedOrder ? 1 : 0.4,
-          pointerEvents: selectedOrder ? 'auto' : 'none',
-          transition: 'opacity 0.2s',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 280px' }}>
+        <div className={`wa-compose${selectedOrder ? '' : ' is-disabled'}`} aria-disabled={!selectedOrder}>
+          <div className="toolbar is-flush">
+            <div className="toolbar-grow">
               <label>
                 <span>Plantilla</span>
                 <select
@@ -220,7 +204,6 @@ export const WhatsappPage = () => {
                 value={customMessage}
                 onChange={(e) => setCustomMessage(e.target.value)}
                 placeholder="Escribe un mensaje personalizado"
-                style={{ resize: 'vertical', paddingTop: 12 }}
               />
             </label>
           )}
@@ -233,7 +216,6 @@ export const WhatsappPage = () => {
               value={manualMessage}
               onChange={(e) => setManualMessage(e.target.value)}
               placeholder="Aquí verás el mensaje antes de enviarlo"
-              style={{ resize: 'vertical', paddingTop: 12 }}
             />
           </label>
 

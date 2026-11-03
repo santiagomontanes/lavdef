@@ -418,16 +418,16 @@ export const DeliveriesPage = () => {
 
       {/* CONTADOR DE INVENTARIO */}
       <div className="card-panel stack-gap">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>
-              Órdenes activas: <strong>{inventorySummary?.activeOrdersCount ?? '—'}</strong>
+        <div className="inv-head">
+          <div className="inv-stats">
+            <span className="inv-stat">
+              Órdenes activas <strong>{inventorySummary?.activeOrdersCount ?? '—'}</strong>
             </span>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>
-              Total prendas en tienda: <strong>{inventorySummary?.totalItemsCount ?? '—'}</strong>
+            <span className="inv-stat">
+              Total prendas en tienda <strong>{inventorySummary?.totalItemsCount ?? '—'}</strong>
             </span>
           </div>
-          <div className="row-actions">
+          <div className="row-actions filter-pills" role="group" aria-label="Filtrar por estado">
             {(['ALL', 'CREATED', 'IN_PROGRESS', 'READY', 'READY_FOR_DELIVERY', 'PARTIAL_DELIVERY'] as const).map((code) => {
               const labels: Record<string, string> = {
                 ALL: 'Todos',
@@ -442,7 +442,8 @@ export const DeliveriesPage = () => {
                   key={code}
                   variant={inventoryFilter === code ? undefined : 'secondary'}
                   onClick={() => setInventoryFilter(code)}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  className="button-sm"
+                  aria-pressed={inventoryFilter === code}
                 >
                   {labels[code]}
                 </Button>
@@ -483,20 +484,14 @@ export const DeliveriesPage = () => {
                 ]}
               />
               {filteredInventoryRows.length > 10 ? (
-                <div className="form-actions no-print" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
+                <div className="form-actions no-print align-start">
                   <Button type="button" variant="secondary" onClick={() => setShowAllInventoryOrders((prev) => !prev)}>
                     {showAllInventoryOrders ? 'Mostrar menos' : 'Mostrar todo'}
                   </Button>
                 </div>
               ) : null}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                padding: '8px 4px 0',
-                borderTop: '2px solid var(--color-border, #e2e8f0)',
-                marginTop: 4
-              }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>
+              <div className="inv-total">
+                <span>
                   Total = <strong>{totalPrendas}</strong> prenda{totalPrendas !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -510,10 +505,10 @@ export const DeliveriesPage = () => {
         className="card-panel stack-gap delivery-export-section"
         style={{ display: exportMode && exportMode !== 'due-today' ? 'none' : 'block' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div className="stack-gap" style={{ gap: 4 }}>
-            <h3 style={{ margin: 0 }}>Órdenes prometidas para hoy (aún en proceso)</h3>
-            <p style={{ margin: 0, color: '#64748b' }}>
+        <div className="section-bar">
+          <div className="section-bar-text">
+            <h3>Órdenes prometidas para hoy (aún en proceso)</h3>
+            <p>
               Incluye órdenes con fecha promesa de hoy que todavía no están en estado listo.
             </p>
           </div>
@@ -534,7 +529,7 @@ export const DeliveriesPage = () => {
             { key: 'status', header: 'Estado', render: (row) => row.statusName },
             { key: 'total', header: 'Total', render: (row) => currency(row.total) },
             { key: 'paid', header: 'Abono', render: (row) => currency(row.paidTotal) },
-            { key: 'balance', header: 'Saldo', render: (row) => currency(row.balanceDue) }
+            { key: 'balance', header: 'Saldo', render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span> }
           ]}
         />
       </div>
@@ -544,10 +539,10 @@ export const DeliveriesPage = () => {
         className="card-panel stack-gap delivery-export-section"
         style={{ display: exportMode && exportMode !== 'ready' ? 'none' : 'block' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div className="stack-gap" style={{ gap: 4 }}>
-            <h3 style={{ margin: 0 }}>Órdenes listas para entregar</h3>
-            <p style={{ margin: 0, color: '#64748b' }}>
+        <div className="section-bar">
+          <div className="section-bar-text">
+            <h3>Órdenes listas para entregar</h3>
+            <p>
               Organizadas por fecha promesa para priorizar salida de prendas.
             </p>
           </div>
@@ -567,7 +562,7 @@ export const DeliveriesPage = () => {
             { key: 'client', header: 'Cliente', render: (row) => row.clientName },
             { key: 'due', header: 'Fecha promesa', render: (row) => (row.dueDate ? dateTime(row.dueDate) : '—') },
             { key: 'total', header: 'Total', render: (row) => currency(row.total) },
-            { key: 'balance', header: 'Saldo', render: (row) => currency(row.balanceDue) }
+            { key: 'balance', header: 'Saldo', render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span> }
           ]}
         />
       </div>
@@ -577,10 +572,10 @@ export const DeliveriesPage = () => {
         className="card-panel stack-gap delivery-export-section"
         style={{ display: exportMode && exportMode !== 'delivered-today' ? 'none' : 'block' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div className="stack-gap" style={{ gap: 4 }}>
-            <h3 style={{ margin: 0 }}>Órdenes entregadas hoy</h3>
-            <p style={{ margin: 0, color: '#64748b' }}>
+        <div className="section-bar">
+          <div className="section-bar-text">
+            <h3>Órdenes entregadas hoy</h3>
+            <p>
               Historial de entregas del día (sección final informativa).
             </p>
           </div>
@@ -614,7 +609,7 @@ export const DeliveriesPage = () => {
             {
               key: 'pending',
               header: 'Pendiente',
-              render: (row) => row.pendingDeliveryNotes ? `Pendiente por entregar: ${row.pendingDeliveryNotes}` : 'â€”'
+              render: (row) => row.pendingDeliveryNotes ? `Pendiente por entregar: ${row.pendingDeliveryNotes}` : '—'
             },
             { key: 'date', header: 'Hora', render: (row) => dateTime(row.createdAt) }
           ]}
@@ -626,8 +621,8 @@ export const DeliveriesPage = () => {
         className="card-panel stack-gap delivery-export-section"
         style={{ display: exportMode && exportMode !== 'active-all' ? 'none' : 'block' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0 }}>Órdenes activas en lavandería</h3>
+        <div className="section-bar">
+          <h3>Órdenes activas en lavandería</h3>
           <div className="row-actions no-print">
             <Button type="button" variant="secondary" onClick={() => exportSectionToPdf('active-all', `Entregas-ordenes-activas-${todayKey}.pdf`)}>
               Exportar PDF
@@ -645,7 +640,7 @@ export const DeliveriesPage = () => {
             { key: 'status', header: 'Estado', render: (row) => row.statusName },
             { key: 'due', header: 'Fecha promesa', render: (row) => (row.dueDate ? dateTime(row.dueDate) : '—') },
             { key: 'total', header: 'Total', render: (row) => currency(row.total) },
-            { key: 'balance', header: 'Saldo', render: (row) => currency(row.balanceDue) }
+            { key: 'balance', header: 'Saldo', render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span> }
           ]}
         />
       </div>

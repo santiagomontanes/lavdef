@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -52,20 +52,20 @@ const BarChart = ({
   const max = Math.max(1, ...rows.map((row) => Number(getValue(row) || 0)));
   return (
     <div className="card-panel stack-gap">
-      <h3 style={{ margin: 0 }}>{title}</h3>
+      <h3 className="card-title">{title}</h3>
       <div className="stack-gap">
         {rows.slice(0, 14).map((row, index) => {
           const value = Number(getValue(row) || 0);
           const width = Math.max(2, Math.round((value / max) * 100));
           return (
-            <div key={`${getLabel(row)}-${index}`} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 90px', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div key={`${getLabel(row)}-${index}`} className="bar-row">
+              <span className="bar-label" title={getLabel(row)}>
                 {getLabel(row)}
               </span>
-              <div style={{ background: '#f1f5f9', borderRadius: 8, height: 12, overflow: 'hidden' }}>
-                <div style={{ width: `${width}%`, height: '100%', background: color }} />
+              <div className="bar-track">
+                <div className="bar-fill" style={{ width: `${width}%`, background: color }} />
               </div>
-              <strong style={{ fontSize: 12, textAlign: 'right' }}>{currency(value)}</strong>
+              <strong className="bar-value">{currency(value)}</strong>
             </div>
           );
         })}
@@ -134,10 +134,10 @@ const ReportSection = ({
     <div
       className="stack-gap card-panel report-section"
       data-report-mode={id}
-      style={{ borderLeft: `6px solid ${theme.accent}`, background: theme.bg }}
+      style={{ '--rs-accent': theme.accent } as CSSProperties}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, color: theme.accent }}>{title}</h2>
+      <div className="section-bar">
+        <h2 className="report-section-title">{title}</h2>
         <div className="row-actions no-print">
           <Button type="button" variant="secondary" onClick={() => onExportPdf(id, title)}>
             Exportar PDF
@@ -408,13 +408,13 @@ export const ReportsPage = () => {
       </div>
 
       <div className="card-panel stack-gap reports-filter-card">
-        <h3 style={{ margin: 0 }}>Rango personalizado</h3>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
-          <label style={{ minWidth: 180 }}>
+        <h3 className="card-title">Rango personalizado</h3>
+        <div className="toolbar range-bar">
+          <label className="cell-min-180">
             <span>Desde</span>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
-          <label style={{ minWidth: 180 }}>
+          <label className="cell-min-180">
             <span>Hasta</span>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
@@ -430,20 +430,14 @@ export const ReportsPage = () => {
 
       <div
         className="reports-export-header"
-        style={{
-          display: exportMode ? 'block' : 'none',
-          background: '#ffffff',
-          border: '1px solid #e5e7eb',
-          borderRadius: 10,
-          padding: 14
-        }}
+        style={{ display: exportMode ? 'block' : 'none' }}
       >
-        <h2 style={{ margin: 0 }}>
+        <h2>
           {exportMode === 'all'
             ? 'Reporte consolidado'
             : allSections.find((s) => s.id === exportMode)?.title ?? 'Reporte'}
         </h2>
-        <p style={{ margin: '8px 0 0', color: '#4b5563' }}>
+        <p>
           Generado: {new Date().toLocaleString('es-CO')}
         </p>
       </div>

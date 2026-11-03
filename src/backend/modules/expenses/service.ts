@@ -6,6 +6,7 @@ import {
   getCurrentSessionUserId,
   getCurrentSessionUserName
 } from '../../../main/services/session-context.js';
+import { computeCashOnlyBreakdown, resolveCashMethodId } from '../cash/service.js';
 
 const expenseSchema = z.object({
   categoryId: z.number().positive(),
@@ -130,16 +131,26 @@ export const createExpensesService = (db: Kysely<Database>) => {
           .where(sql`LOWER(notes)`, 'like', `%${methodName}%`)
           .executeTakeFirst();
 
-        const openingAmount =
-          methodName === 'efectivo' || methodName === 'cash'
-            ? Number(activeCashSession.opening_amount ?? 0)
-            : 0;
+        const cashMethodId = await resolveCashMethodId(trx);
+        const isCashMethod =
+          (cashMethodId !== null && cashMethodId === parsed.paymentMethodId) ||
+          methodName === 'efectivo' ||
+          methodName === 'cash';
 
-        const availableByMethod =
-          openingAmount +
-          Number(incomeByMethodRow?.sum ?? 0) -
-          Number(spentByMethodRow?.sum ?? 0) -
-          Number(refundedByMethodRow?.sum ?? 0);
+        // Efectivo: mismo cálculo que el arqueo (incluye entradas/salidas manuales de caja).
+        const availableByMethod = isCashMethod
+          ? (
+              await computeCashOnlyBreakdown(trx, {
+                sessionId: activeCashSession.id,
+                openingAmount: Number(activeCashSession.opening_amount ?? 0),
+                periodStart: new Date(sessionStart),
+                periodEnd: new Date(),
+                cashMethodId: cashMethodId ?? parsed.paymentMethodId
+              })
+            ).cashOnlyAmount
+          : Number(incomeByMethodRow?.sum ?? 0) -
+            Number(spentByMethodRow?.sum ?? 0) -
+            Number(refundedByMethodRow?.sum ?? 0);
 
         if (parsed.amount > availableByMethod) {
           throw new Error(

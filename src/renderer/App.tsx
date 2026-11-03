@@ -272,7 +272,7 @@ export default function App() {
         }}
       >
         <div className="stack-gap">
-          <p style={{ marginTop: 0 }}>Ingresa la contraseña de administrador para editar la fecha promesa.</p>
+          <p className="modal-lead">Ingresa la contraseña de administrador para editar la fecha promesa.</p>
           <input
             type="password"
             className="field"
@@ -336,7 +336,7 @@ export default function App() {
         onClose={() => { setRescheduleReadyId(null); setRescheduleReadyError(null); }}
       >
         <div className="stack-gap">
-          <p style={{ marginTop: 0 }}>Ingresa la nueva fecha prometida para la orden.</p>
+          <p className="modal-lead">Ingresa la nueva fecha prometida para la orden.</p>
           <input
             type="date"
             className="field"

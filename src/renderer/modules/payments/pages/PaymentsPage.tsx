@@ -49,7 +49,7 @@ export const PaymentsPage = () => {
       />
 
       <div className="card-panel stack-gap">
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="toolbar">
           <Select
             value={methodFilter}
             onChange={(e) => setMethodFilter(e.target.value)}

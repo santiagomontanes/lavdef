@@ -69,7 +69,7 @@ export const CashReportPrintPage = ({ user }: { user: SessionUser }) => {
   const [runningPdfAction, setRunningPdfAction] = useState(false);
   const autoPrintedRef = useRef(false);
 
-  const { data: pdfOutputDir } = useQuery({
+  const { data: pdfOutputDir, isFetched: pdfOutputDirReady } = useQuery({
     queryKey: ['pdf-output-dir'],
     queryFn: async () => {
       try {
@@ -137,7 +137,8 @@ export const CashReportPrintPage = ({ user }: { user: SessionUser }) => {
   };
 
   useEffect(() => {
-    if (!data || !shouldAutoPrint || autoPrintedRef.current) return;
+    // Esperar a conocer la carpeta de PDFs: si no, el PDF automático se guarda en la carpeta equivocada.
+    if (!data || !shouldAutoPrint || !pdfOutputDirReady || autoPrintedRef.current) return;
     autoPrintedRef.current = true;
     let cancelled = false;
     const run = async () => {
@@ -152,7 +153,7 @@ export const CashReportPrintPage = ({ user }: { user: SessionUser }) => {
     return () => {
       cancelled = true;
     };
-  }, [data, shouldAutoPrint, pdfOutputDir]);
+  }, [data, shouldAutoPrint, pdfOutputDir, pdfOutputDirReady]); // eslint-disable-line react-hooks/exhaustive-deps -- generatePdf se recrea en cada render; el ref evita doble impresión
 
   if (isLoading) {
     return <div className="card-panel">Cargando arqueo...</div>;

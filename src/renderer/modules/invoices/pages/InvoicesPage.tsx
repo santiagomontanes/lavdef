@@ -62,7 +62,7 @@ export const InvoicesPage = () => {
       />
 
       <div className="card-panel stack-gap">
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="toolbar">
           <Input
             placeholder="Filtrar por factura, orden, cliente o ticket"
             value={filter}
@@ -81,16 +81,16 @@ export const InvoicesPage = () => {
               header: 'Fecha promesa',
               render: (row) => (row.dueDate ? dateTime(row.dueDate) : '—')
             },
-            { key: 'total', header: 'Total', render: (row) => currency(row.total) },
+            { key: 'total', header: 'Total', render: (row) => <strong>{currency(row.total)}</strong> },
             { key: 'paid', header: 'Abonado', render: (row) => currency(row.paidTotal) },
-            { key: 'balance', header: 'Saldo', render: (row) => currency(row.balanceDue) },
+            { key: 'balance', header: 'Saldo', render: (row) => <span className={row.balanceDue > 0 ? 'amount-debt' : 'amount-ok'}>{currency(row.balanceDue)}</span> },
             { key: 'ticket', header: 'Ticket', render: (row) => row.ticketCode },
             { key: 'date', header: 'Fecha', render: (row) => dateTime(row.createdAt) },
             {
               key: 'actions',
               header: 'Acciones',
               render: (row) => (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="inline-actions">
                   <Link className="button button-secondary" to={`/facturas/${row.orderId}`}>
                     Ver
                   </Link>

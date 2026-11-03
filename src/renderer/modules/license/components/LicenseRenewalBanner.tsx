@@ -13,42 +13,20 @@ export const LicenseRenewalBanner = ({ daysLeft, businessName, offline }: Props)
   )}`;
 
   return (
-    <div
-      className="no-print"
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 9999,
-        width: '100%',
-        background: 'linear-gradient(90deg, #fff4d6 0%, #ffe8b3 100%)',
-        borderBottom: '1px solid #f2cf6d',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.08)'
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 1400,
-          margin: '0 auto',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          flexWrap: 'wrap'
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <strong style={{ fontSize: 15, color: '#6b4f00' }}>
+    <div className="no-print license-banner" role="status">
+      <div className="license-banner-inner">
+        <div className="license-banner-text">
+          <strong>
             Tu licencia vence en {daysLeft} día{daysLeft === 1 ? '' : 's'}
           </strong>
-          <span style={{ fontSize: 13, color: '#7a5b00' }}>
+          <span>
             {offline
               ? 'El equipo lleva días sin conexión. Conéctalo a internet para ponerte al día; al vencer, el sistema se bloqueará.'
               : 'Para evitar interrupciones, te recomendamos renovar el plan con anticipación.'}
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="inline-actions">
           <Button
             onClick={async () => {
               await api.openExternal(whatsappUrl);

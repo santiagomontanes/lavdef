@@ -81,7 +81,7 @@ export const UsersPage = () => {
       />
 
       <div className="card-panel stack-gap">
-        <h3 style={{ margin: 0 }}>Crear vendedor</h3>
+        <h3 className="card-title">Crear vendedor</h3>
         <div className="form-grid">
           <label>
             <span>Nombre completo</span>
@@ -219,7 +219,7 @@ export const UsersPage = () => {
         {deleteMutation.isError && (
           <p className="error-text">{(deleteMutation.error as Error).message}</p>
         )}
-        {message && <p style={{ color: '#16a34a', margin: 0 }}>{message}</p>}
+        {message && <p className="success-text" role="status">{message}</p>}
       </div>
     </section>
   );

@@ -44,6 +44,8 @@ const createWindow = async () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // En la versión instalada no se pueden abrir las herramientas de desarrollador (Ctrl+Shift+I).
+      devTools: isDev,
       ...(disableGpuRenderingOnStartup
         ? {
             webgl: false,

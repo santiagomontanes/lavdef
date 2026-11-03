@@ -179,11 +179,7 @@ export const InventoryPage = () => {
                   <Button
                     type="button"
                     variant={row.isActive ? 'danger' : 'secondary'}
-                    style={
-                      row.isActive
-                        ? { background: '#b91c1c', color: '#fff', border: 'none' }
-                        : { background: '#15803d', color: '#fff', border: 'none' }
-                    }
+                    className={row.isActive ? undefined : 'button-success'}
                     onClick={() => toggleMutation.mutate(row)}
                   >
                     {row.isActive ? 'Desactivar' : 'Activar'}

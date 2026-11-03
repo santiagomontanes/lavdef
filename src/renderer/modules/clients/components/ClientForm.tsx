@@ -180,7 +180,7 @@ export const ClientForm = ({
           </label>
           <label className="full-span">
             <span>
-              Notas <small style={{ fontWeight: 400, color: '#6b7280' }}>(400 car. máx.)</small>
+              Notas <small className="label-hint">(400 car. máx.)</small>
             </span>
             <Textarea
               {...register('notes', { maxLength: { value: 400, message: 'Máximo 400 caracteres' } })}
@@ -191,22 +191,15 @@ export const ClientForm = ({
       </FormSection>
 
       {hasMatches ? (
-        <div
-          style={{
-            border: '1px solid #f59e0b',
-            background: '#fffbeb',
-            padding: 12,
-            borderRadius: 6
-          }}
-        >
-          <strong style={{ color: '#92400e' }}>
+        <div className="match-box" role="alert">
+          <strong className="match-box-title">
             Ya existe un cliente similar. Revísalo antes de crear uno nuevo.
           </strong>
-          <ul style={{ margin: '8px 0 0 18px', padding: 0, fontSize: 13 }}>
+          <ul className="match-list">
             {visibleMatches.map((m) => (
-              <li key={m.id} style={{ marginBottom: 4 }}>
+              <li key={m.id}>
                 <strong>{m.code}</strong> · {m.firstName} {m.lastName} — {m.phone}{' '}
-                <em style={{ color: '#6b7280' }}>
+                <em className="muted-text">
                   ({m.matchedBy === 'both'
                     ? 'mismo nombre y teléfono'
                     : m.matchedBy === 'phone'
@@ -217,7 +210,7 @@ export const ClientForm = ({
             ))}
           </ul>
           {serverMatches.length > 0 ? (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#6b7280' }}>
+            <p className="text-note is-small">
               Si confirmas que es un cliente nuevo distinto, pulsa "Crear de todas formas".
             </p>
           ) : null}

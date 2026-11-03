@@ -38,6 +38,10 @@ export const createReportsService = (db: Kysely<Database>) => ({
       .where('o.created_at', '>=', startOfDay(rangeFrom))
       .where('o.created_at', '<=', endOfDay(rangeTo));
 
+    // Las órdenes canceladas conservan su total: no deben sumar como ventas.
+    const notCancelled = sql<boolean>`o.status_id NOT IN (SELECT id FROM order_statuses WHERE UPPER(code) IN ('CANCELLED','CANCELED','CANCELADO'))`;
+    const salesFiltered = orderFiltered.where(notCancelled);
+
     const paymentFiltered = paymentQuery
       .where('p.created_at', '>=', startOfDay(rangeFrom))
       .where('p.created_at', '<=', endOfDay(rangeTo));
@@ -53,12 +57,13 @@ export const createReportsService = (db: Kysely<Database>) => ({
       .where('cm.created_at', '>=', startOfDay(rangeFrom))
       .where('cm.created_at', '<=', endOfDay(rangeTo));
 
+    // El orden de estos nombres DEBE coincidir con el orden de las consultas en Promise.all.
     const [
       totalSalesRow,
       totalPaymentsRow,
+      totalVoidedPaymentsRow,
       totalExpensesRow,
       totalPaymentOutRow,
-      totalVoidedPaymentsRow,
       totalOrdersRow,
       warrantiesCreatedRow,
       warrantiesClosedRow,
@@ -80,7 +85,7 @@ export const createReportsService = (db: Kysely<Database>) => ({
       outstandingBalanceRow,
       manualVsDigitalRows
     ] = await Promise.all([
-      orderFiltered
+      salesFiltered
         .select((eb) => eb.fn.sum<number>('o.total').as('sum'))
         .executeTakeFirst(),
 
@@ -192,7 +197,7 @@ export const createReportsService = (db: Kysely<Database>) => ({
         .limit(20)
         .execute(),
 
-      orderFiltered
+      salesFiltered
         .select([
           sql<string>`DATE_FORMAT(o.created_at, '%Y-%m-%d')`.as('day'),
           (eb) => eb.fn.sum<number>('o.total').as('amount')

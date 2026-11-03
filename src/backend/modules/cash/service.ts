@@ -52,7 +52,7 @@ const mapMovementListItem = (row: {
   createdAt: new Date(row.created_at).toISOString()
 });
 
-const resolveCashMethodId = async (db: Kysely<Database>): Promise<number | null> => {
+export const resolveCashMethodId = async (db: Kysely<Database>): Promise<number | null> => {
   const byCode = await db
     .selectFrom('payment_methods')
     .select(['id'])
@@ -79,7 +79,7 @@ type CashOnlyBreakdown = {
   cashRefunds: number;
 };
 
-const computeCashOnlyBreakdown = async (
+export const computeCashOnlyBreakdown = async (
   db: Kysely<Database>,
   args: {
     sessionId: number;
@@ -120,11 +120,25 @@ const computeCashOnlyBreakdown = async (
       (eb) => eb.fn.sum<number>('amount').as('sum')
     ])
     .where('cash_session_id', '=', sessionId)
-    .where('movement_type', 'in', ['CASH_IN', 'CASH_OUT', 'PAYMENT_OUT'])
+    .where('movement_type', 'in', ['CASH_IN', 'CASH_OUT'])
     .where('created_at', '>=', periodStart)
     .where('created_at', '<=', periodEnd)
     .groupBy('movement_type')
     .execute();
+
+  // Pagos en efectivo de cajas anteriores que se anularon durante esta caja:
+  // ese efectivo ya se contó en un cierre anterior, así que sale de esta caja.
+  const priorVoidedCashRow = cashMethodId
+    ? await db
+        .selectFrom('payments')
+        .select((eb) => eb.fn.sum<number>('amount').as('sum'))
+        .where('payment_method_id', '=', cashMethodId)
+        .where('status', '=', 'VOIDED')
+        .where('voided_at', '>=', periodStart)
+        .where('voided_at', '<=', periodEnd)
+        .where('created_at', '<', periodStart)
+        .executeTakeFirst()
+    : { sum: 0 };
 
   const findSum = (type: string) =>
     Number(movementRows.find((row) => row.movement_type === type)?.sum ?? 0);
@@ -133,7 +147,24 @@ const computeCashOnlyBreakdown = async (
   const cashExpenses = Number(cashExpensesRow?.sum ?? 0);
   const manualCashIn = findSum('CASH_IN');
   const manualCashOut = findSum('CASH_OUT');
-  const cashRefunds = findSum('PAYMENT_OUT');
+  // Devoluciones por cancelación (PAYMENT_OUT): solo las de efectivo salen del cajón.
+  // La nota termina en "· <método>" (ver orders/service.ts → cancel).
+  const cashMethodName = cashMethodId
+    ? (await db.selectFrom('payment_methods').select(['name']).where('id', '=', cashMethodId).executeTakeFirst())?.name ?? null
+    : null;
+  const cashRefundOutRow = cashMethodName
+    ? await db
+        .selectFrom('cash_movements')
+        .select((eb) => eb.fn.sum<number>('amount').as('sum'))
+        .where('cash_session_id', '=', sessionId)
+        .where('movement_type', '=', 'PAYMENT_OUT')
+        .where('notes', 'like', `%· ${cashMethodName}`)
+        .where('created_at', '>=', periodStart)
+        .where('created_at', '<=', periodEnd)
+        .executeTakeFirst()
+    : { sum: 0 };
+
+  const cashRefunds = Number(cashRefundOutRow?.sum ?? 0) + Number(priorVoidedCashRow?.sum ?? 0);
 
   const cashOnlyAmount =
     Number(openingAmount) +
@@ -155,6 +186,17 @@ const computeCashOnlyBreakdown = async (
 
 export const createCashService = (db: Kysely<Database>) => ({
   async open(input: CashOpenInput) {
+    // Candado de MySQL: dos clics seguidos (o dos equipos) no pueden abrir dos cajas a la vez.
+    return db.connection().execute(async (conn) => {
+      await sql`SELECT GET_LOCK('lavanderia_cash_open', 10)`.execute(conn);
+      try {
+        return await openLocked(conn);
+      } finally {
+        await sql`SELECT RELEASE_LOCK('lavanderia_cash_open')`.execute(conn);
+      }
+    });
+
+    async function openLocked(db: Kysely<Database>) {
     const actorId = getCurrentSessionUserId() ?? 1;
     const actorName = getCurrentSessionUserName();
     const active = await db
@@ -184,7 +226,13 @@ export const createCashService = (db: Kysely<Database>) => ({
 
     let resolvedOpeningAmount = Number(input?.openingAmount ?? 0);
 
-    if (!input?.openingAmount || Number(input.openingAmount) <= 0) {
+    if (!Number.isFinite(resolvedOpeningAmount) || resolvedOpeningAmount < 0) {
+      throw new Error('El monto inicial no puede ser negativo.');
+    }
+
+    // Solo se toma la base del último cierre si no se envió monto: un 0 explícito
+    // es válido (por ejemplo, cuando el dueño retiró todo el efectivo al cerrar).
+    if (input?.openingAmount === undefined || input?.openingAmount === null) {
       const lastClosure = await db
         .selectFrom('cash_closures')
         .select(['declared_amount'])
@@ -226,6 +274,7 @@ export const createCashService = (db: Kysely<Database>) => ({
       .selectAll()
       .where('id', '=', Number(result.insertId))
       .executeTakeFirstOrThrow();
+    }
   },
 
   async addMovement(input: CashMovementInput) {

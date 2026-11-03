@@ -109,6 +109,10 @@ export const registerIpc = () => {
     'settings:update-order-quantity-decimals-enabled',
     'settings:update-order-protection-password',
     'settings:update-pdf-output-dir',
+    'settings:update-invoice-show-barcode-enabled',
+    'settings:update-print-force-application-copies-enabled',
+    'settings:update-print-force-copies-printer',
+    'dashboard:summary',
     'reports:summary',
     'reports:inventory-general',
     'backup:connect-drive',
@@ -172,7 +176,11 @@ export const registerIpc = () => {
         return { success: false, error: 'Debes iniciar sesión para ejecutar esta acción.' };
       }
 
-      if (needsAdmin && Number(currentUser?.roleId ?? 0) !== 1) {
+      // La configuración de la base de datos es pública solo para la instalación (sin sesión):
+      // con alguien conectado, únicamente el administrador puede cambiarla.
+      const needsAdminWhenLoggedIn = channel === 'db:save-config' && Boolean(currentUser);
+
+      if ((needsAdmin || needsAdminWhenLoggedIn) && Number(currentUser?.roleId ?? 0) !== 1) {
         await logDeniedAttempt(channel, 'forbidden_non_admin');
         return { success: false, error: 'No tienes permisos para esta acción.' };
       }

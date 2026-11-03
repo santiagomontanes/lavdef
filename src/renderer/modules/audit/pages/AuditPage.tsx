@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@renderer/services/api';
 import { Button, PageHeader } from '@renderer/ui/components';
+import { IconBack } from '@renderer/ui/components/icons';
 import type { AuditEntry } from '@shared/types';
 
 // ─── Etiquetas legibles para cada acción ────────────────────────────────────
@@ -168,7 +169,7 @@ const EntryDetail = ({ entry }: { entry: AuditEntry }) => {
   }
 
   return parts.length > 0 ? (
-    <span style={{ color: '#6b7280', fontSize: 12 }}>{parts.join(' · ')}</span>
+    <span className="audit-detail">{parts.join(' · ')}</span>
   ) : null;
 };
 
@@ -188,7 +189,7 @@ const DayView = ({ date, onBack }: { date: string; onBack: () => void }) => {
         subtitle={`${entries.length} evento${entries.length !== 1 ? 's' : ''} registrado${entries.length !== 1 ? 's' : ''}`}
         actions={
           <Button variant="secondary" onClick={onBack}>
-            ← Todos los días
+            <IconBack /> Todos los días
           </Button>
         }
       />
@@ -196,53 +197,36 @@ const DayView = ({ date, onBack }: { date: string; onBack: () => void }) => {
       {isLoading && <div className="card-panel">Cargando eventos...</div>}
 
       {!isLoading && entries.length === 0 && (
-        <div className="card-panel" style={{ color: '#6b7280' }}>
+        <div className="card-panel muted-text">
           No hay eventos registrados para este día.
         </div>
       )}
 
       {!isLoading && entries.length > 0 && (
-        <div className="card-panel" style={{ padding: 0, overflow: 'hidden' }}>
-          {entries.map((entry, i) => {
+        <div className="card-panel audit-list">
+          {entries.map((entry) => {
             const meta = getActionMeta(entry.action);
             return (
-              <div
-                key={entry.id}
-                style={{
-                  display: 'flex',
-                  gap: 12,
-                  alignItems: 'flex-start',
-                  padding: '10px 16px',
-                  borderBottom: i < entries.length - 1 ? '1px solid #f3f4f6' : 'none',
-                  background: i % 2 === 0 ? '#fff' : '#fafafa'
-                }}
-              >
-                <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>
+              <div key={entry.id} className="audit-row">
+                <span className="audit-icon" aria-hidden="true">
                   {meta.icon}
                 </span>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 600, fontSize: 13, color: meta.color }}>
+                <div className="audit-body">
+                  <div className="audit-head">
+                    <span className="audit-label" data-tone={meta.color}>
                       {meta.label}
                     </span>
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                    <span className="audit-time">
                       {formatTime(entry.createdAt)}
                     </span>
                   </div>
-                  <div style={{ marginTop: 2 }}>
+                  <div className="audit-detail-wrap">
                     <EntryDetail entry={entry} />
                   </div>
                 </div>
 
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: '#d1d5db',
-                    flexShrink: 0,
-                    fontFamily: 'monospace'
-                  }}
-                >
+                <span className="audit-id">
                   #{entry.id}
                 </span>
               </div>
@@ -278,48 +262,27 @@ export const AuditPage = () => {
       {isLoading && <div className="card-panel">Cargando historial...</div>}
 
       {!isLoading && days.length === 0 && (
-        <div className="card-panel" style={{ color: '#6b7280' }}>
+        <div className="card-panel muted-text">
           Aún no hay eventos registrados.
         </div>
       )}
 
       {!isLoading && days.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 12
-          }}
-        >
+        <div className="audit-days">
           {days.map((day) => (
             <button
               key={day.date}
+              type="button"
               onClick={() => setSelectedDay(day.date)}
-              style={{
-                background: isToday(day.date) ? '#eff6ff' : '#fff',
-                border: `1.5px solid ${isToday(day.date) ? '#2563eb' : '#e5e7eb'}`,
-                borderRadius: 12,
-                padding: '16px 18px',
-                textAlign: 'left',
-                cursor: 'pointer',
-                transition: 'box-shadow 0.15s, border-color 0.15s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.08)';
-                e.currentTarget.style.borderColor = '#2563eb';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.borderColor = isToday(day.date) ? '#2563eb' : '#e5e7eb';
-              }}
+              className={`audit-day${isToday(day.date) ? ' is-today' : ''}`}
             >
-              <div style={{ fontSize: 13, fontWeight: 700, color: isToday(day.date) ? '#2563eb' : '#111827' }}>
+              <div className="audit-day-label">
                 {dayLabel(day.date)}
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+              <div className="audit-day-count">
                 {day.count} evento{day.count !== 1 ? 's' : ''}
               </div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+              <div className="audit-day-date">
                 {day.date}
               </div>
             </button>

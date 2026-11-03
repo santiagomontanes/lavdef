@@ -228,7 +228,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
     return (
       <section className="stack-gap">
         <PageHeader title="Configuración" subtitle="Se requiere tu contraseña para continuar." />
-        <div className="card-panel" style={{ maxWidth: 400 }}>
+        <div className="card-panel narrow-panel">
           <form className="stack-gap" onSubmit={handleUnlock}>
             <label>
               <span>Contraseña</span>
@@ -343,17 +343,12 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         </label>
 
         {form.logoBase64 && (
-          <div className="card-panel" style={{ background: '#f8fafc' }}>
-            <p style={{ marginTop: 0 }}><strong>Vista previa del logo</strong></p>
+          <div className="card-panel card-muted">
+            <p className="form-subtitle">Vista previa del logo</p>
             <img
               src={form.logoBase64}
               alt="Logo del negocio"
-              style={{
-                maxWidth: 140,
-                maxHeight: 140,
-                objectFit: 'contain',
-                display: 'block'
-              }}
+              className="logo-preview"
             />
           </div>
         )}
@@ -361,14 +356,13 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         <label>
           <span>Políticas del negocio (factura y WhatsApp)</span>
           <textarea
-            className="field"
             rows={6}
             value={form.invoicePolicies || ''}
             onChange={(e) =>
               setForm({ ...form, invoicePolicies: e.target.value })
             }
             placeholder="Ej: No nos hacemos responsables por prendas no reclamadas en 30 días..."
-            style={{ resize: 'vertical', paddingTop: 12 }}
+            className="field notes-field"
           />
         </label>
 
@@ -378,7 +372,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
           </Button>
         </div>
         {saveSuccess && (
-          <p style={{ margin: 0, color: 'green' }}>Configuración guardada correctamente ✅</p>
+          <p className="success-text" role="status">Configuración guardada correctamente</p>
         )}
       </div>
 
@@ -439,7 +433,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
   )}
 
   {updateAdminPasswordMutation.isSuccess && (
-    <p style={{ color: 'green', margin: 0 }}>
+    <p className="success-text" role="status">
       Contraseña administrativa actualizada correctamente.
     </p>
   )}
@@ -448,17 +442,16 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
       <div className="card-panel stack-gap">
         <h3>Automatización de órdenes</h3>
 
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={autoReadyByDueDateEnabled}
             onChange={(e) => updateAutoReadyMutation.mutate(e.target.checked)}
             disabled={updateAutoReadyMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Cambio automático a "Lista" por fecha promesa</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Si se desactiva, las órdenes vencidas seguirán apareciendo para revisión,
               pero no cambiarán automáticamente a "Lista".
             </p>
@@ -472,7 +465,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
 
         {updateAutoReadyMutation.isSuccess && (
-          <p style={{ color: 'green', margin: 0 }}>
+          <p className="success-text" role="status">
             Preferencia de automatización actualizada correctamente.
           </p>
         )}
@@ -480,17 +473,16 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
       <div className="card-panel stack-gap">
         <h3>Automatización de cantidades</h3>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={orderQuantityDecimalsEnabled}
             onChange={(e) => updateOrderQuantityDecimalsMutation.mutate(e.target.checked)}
             disabled={updateOrderQuantityDecimalsMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Permitir cantidades decimales en órdenes</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Si se activa, la cantidad podrá usar valores como 1.5 o 1.8. Si se desactiva, la captura nueva usará solo enteros.
             </p>
           </div>
@@ -503,7 +495,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
 
         {updateOrderQuantityDecimalsMutation.isSuccess && (
-          <p style={{ color: 'green', margin: 0 }}>
+          <p className="success-text" role="status">
             Preferencia de cantidades actualizada correctamente.
           </p>
         )}
@@ -511,24 +503,23 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
       <div className="card-panel stack-gap">
         <h3>Compatibilidad de video</h3>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={disableGpuRenderingEnabled}
             onChange={(e) => updateDisableGpuRenderingMutation.mutate(e.target.checked)}
             disabled={updateDisableGpuRenderingMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Iniciar sin renderizado por GPU</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Si se activa, el programa arrancará usando CPU en lugar de aceleración por hardware.
               Úsalo si este computador presenta fallas de video, congelamientos o pantallazos azules.
             </p>
           </div>
         </label>
 
-        <p style={{ margin: 0, color: '#92400e', fontSize: 13 }}>
+        <p className="field-hint is-warning">
           Este cambio aplica en el siguiente reinicio de la aplicación.
         </p>
 
@@ -549,7 +540,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
 
         {updateDisableGpuRenderingMutation.isSuccess && (
-          <p style={{ color: 'green', margin: 0 }}>
+          <p className="success-text" role="status">
             Preferencia de video actualizada correctamente.
           </p>
         )}
@@ -557,21 +548,20 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
       <div className="card-panel stack-gap">
         <h3>Impresión</h3>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={printForceApplicationCopies}
             onChange={(e) => updatePrintForceCopiesMutation.mutate(e.target.checked)}
             disabled={updatePrintForceCopiesMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Forzar múltiples copias desde la aplicación</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Activa esta opción si tu impresora ignora la cantidad de copias seleccionada. La
               aplicación enviará cada copia como un trabajo de impresión independiente.
             </p>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Con la opción activada la factura se envía directo a la impresora (sin el diálogo de
               Windows) y en la pantalla de factura podrás elegir cuántas copias imprimir.
             </p>
@@ -582,6 +572,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
           <label>
             <span>Impresora para la impresión reforzada</span>
             <select
+              className="field"
               value={printForceCopiesPrinter ?? ''}
               onChange={(e) =>
                 updatePrintForceCopiesPrinterMutation.mutate(e.target.value || null)
@@ -611,7 +602,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
         {(updatePrintForceCopiesMutation.isSuccess ||
           updatePrintForceCopiesPrinterMutation.isSuccess) && (
-          <p style={{ margin: 0, color: 'green' }}>
+          <p className="success-text" role="status">
             Preferencia de impresión actualizada correctamente.
           </p>
         )}
@@ -619,17 +610,16 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
       <div className="card-panel stack-gap">
         <h3>PDF y Facturas</h3>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={invoiceShowAllActiveOrdersEnabled}
             onChange={(e) => updateInvoiceActiveOrdersModeMutation.mutate(e.target.checked)}
             disabled={updateInvoiceActiveOrdersModeMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Mostrar todas las órdenes pendientes del cliente en la factura</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Si se desactiva, la factura solo mostrará un resumen corto de las órdenes por reclamar.
             </p>
           </div>
@@ -642,22 +632,21 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
 
         {updateInvoiceActiveOrdersModeMutation.isSuccess && (
-          <p style={{ margin: 0, color: 'green' }}>
+          <p className="success-text" role="status">
             Preferencia de visualización de facturas actualizada correctamente.
           </p>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <label className="toggle-row">
           <input
             type="checkbox"
             checked={invoiceShowBarcodeEnabled}
             onChange={(e) => updateInvoiceShowBarcodeMutation.mutate(e.target.checked)}
             disabled={updateInvoiceShowBarcodeMutation.isPending}
-            style={{ marginTop: 4 }}
           />
           <div>
             <strong>Mostrar el código de barras en la factura</strong>
-            <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            <p className="toggle-desc">
               Si se desactiva, la factura no imprime el código de barras y se ahorra espacio de papel.
             </p>
           </div>
@@ -670,7 +659,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
 
         {updateInvoiceShowBarcodeMutation.isSuccess && (
-          <p style={{ margin: 0, color: 'green' }}>
+          <p className="success-text" role="status">
             Preferencia del código de barras actualizada correctamente.
           </p>
         )}
@@ -712,7 +701,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
             {updatePdfDirMutation.isPending ? 'Guardando...' : 'Guardar carpeta PDF'}
           </Button>
         </div>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>
+        <p className="field-hint">
           Aquí se guarda automáticamente la exportación de facturas y reportes.
         </p>
         {updatePdfDirMutation.isError && (
@@ -720,13 +709,13 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
         )}
         {pdfDirError && <p className="error-text">{pdfDirError}</p>}
         {updatePdfDirMutation.isSuccess && (
-          <p style={{ margin: 0, color: 'green' }}>Carpeta PDF actualizada.</p>
+          <p className="success-text" role="status">Carpeta PDF actualizada.</p>
         )}
       </div>
 
       <div className="card-panel stack-gap">
         <h3>Diagnóstico runtime (build autocontenida)</h3>
-        <p style={{ margin: 0, color: '#6b7280' }}>
+        <p className="muted-text">
           Estado de dependencias críticas para instalación Windows.
         </p>
 
@@ -743,7 +732,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
 
         {runtimeDiagnostics ? (
           <>
-            <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#374151' }}>
+            <div className="runtime-info">
               <span><strong>Plataforma:</strong> {runtimeDiagnostics.platform}</span>
               <span><strong>Empaquetada:</strong> {runtimeDiagnostics.isPackaged ? 'Sí' : 'No'}</span>
               <span><strong>appPath:</strong> {runtimeDiagnostics.appPath}</span>
@@ -761,36 +750,15 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
                 {
                   key: 'status',
                   header: 'Estado',
-                  render: (row) => {
-                    const color =
-                      row.status === 'ok'
-                        ? '#065f46'
-                        : row.status === 'warning'
-                          ? '#92400e'
-                          : '#991b1b';
-                    const background =
-                      row.status === 'ok'
-                        ? '#d1fae5'
-                        : row.status === 'warning'
-                          ? '#fef3c7'
-                          : '#fee2e2';
-
-                    return (
-                      <span
-                        style={{
-                          color,
-                          background,
-                          borderRadius: 999,
-                          padding: '2px 8px',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          fontSize: 11
-                        }}
-                      >
-                        {row.status}
-                      </span>
-                    );
-                  }
+                  render: (row) => (
+                    <span
+                      className={`check-pill ${
+                        row.status === 'ok' ? 'is-ok' : row.status === 'warning' ? 'is-warning' : 'is-error'
+                      }`}
+                    >
+                      {row.status}
+                    </span>
+                  )
                 },
                 {
                   key: 'required',
@@ -811,7 +779,7 @@ export const SettingsPage = ({ user }: { user: SessionUser }) => {
             />
           </>
         ) : (
-          <p style={{ margin: 0, color: '#6b7280' }}>
+          <p className="muted-text">
             Ejecuta “Revalidar diagnóstico” para obtener el estado actual.
           </p>
         )}

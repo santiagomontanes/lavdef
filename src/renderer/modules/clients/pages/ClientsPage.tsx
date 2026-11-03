@@ -159,12 +159,12 @@ export const ClientsPage = () => {
       />
 
       {clientsError && (
-        <div className="card-panel" style={{ borderLeft: '4px solid #dc2626' }}>
-          <p className="error-text" style={{ margin: 0 }}>
+        <div className="card-panel card-alert" role="alert">
+          <p className="error-text">
             <strong>No fue posible cargar el listado de clientes.</strong>{' '}
             {(clientsErrorObj as Error)?.message}
           </p>
-          <p style={{ margin: '6px 0 10px', color: '#6b7280' }}>
+          <p className="text-note">
             Ningún cliente fue eliminado: es un problema de conexión con la base de datos. No
             vuelvas a crear el cliente; reintenta la carga.
           </p>
@@ -177,7 +177,7 @@ export const ClientsPage = () => {
       <div className="split-grid">
         <div className="card-panel">
           {usingServerMatches && (
-            <p style={{ margin: '0 0 10px', color: '#2563eb', fontSize: 13 }}>
+            <p className="note-info">
               Estos resultados vienen directo de la base de datos porque no aparecían en el
               listado cargado. El cliente existe: no lo crees de nuevo.
             </p>
@@ -239,12 +239,12 @@ export const ClientsPage = () => {
             ]}
           />
           {hiddenCount > 0 && (
-            <p style={{ marginTop: 10, color: '#6b7280', fontSize: 13 }}>
+            <p className="text-note is-small">
               Mostrando {renderedClients.length} de {visibleClients.length} clientes. Usa el
               buscador (nombre, teléfono o código) para llegar a cualquiera de los demás.
             </p>
           )}
-          {deleteInfo && <p className="error-text" style={{ marginTop: 10 }}>{deleteInfo}</p>}
+          {deleteInfo && <p className="error-text spaced-top">{deleteInfo}</p>}
         </div>
 
         <div className="card-panel">
@@ -257,7 +257,7 @@ export const ClientsPage = () => {
             submitError={createMutation.error as Error | null}
           />
           {createMutation.isSuccess && (
-            <p style={{ color: '#16a34a', fontSize: 13, marginTop: 8 }}>
+            <p className="success-text" role="status">
               Cliente registrado correctamente.
             </p>
           )}
@@ -285,7 +285,7 @@ export const ClientsPage = () => {
       >
         {mergeCtx ? (
           <div className="stack-gap">
-            <p style={{ marginTop: 0 }}>
+            <p className="modal-lead">
               Vas a mover todo el historial (órdenes, facturas, pagos, entregas, mediciones) del
               cliente duplicado <strong>{mergeCtx.duplicate.code} · {mergeCtx.duplicate.firstName} {mergeCtx.duplicate.lastName}</strong>{' '}
               hacia un cliente principal. El cliente duplicado se eliminará al finalizar.
@@ -299,38 +299,28 @@ export const ClientsPage = () => {
               autoFocus
             />
 
-            <div
-              style={{
-                maxHeight: 280,
-                overflow: 'auto',
-                border: '1px solid #e5e7eb',
-                borderRadius: 6
-              }}
-            >
-              <table style={{ width: '100%', fontSize: 13 }}>
-                <thead style={{ background: '#f9fafb' }}>
+            <div className="mini-table-wrap">
+              <table className="mini-table">
+                <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Código</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Cliente</th>
-                    <th style={{ textAlign: 'left', padding: 8 }}>Teléfono</th>
-                    <th style={{ textAlign: 'right', padding: 8 }}>Seleccionar</th>
+                    <th>Código</th>
+                    <th>Cliente</th>
+                    <th>Teléfono</th>
+                    <th className="align-right">Seleccionar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {mergeCandidates.map((c) => (
                     <tr
                       key={c.id}
-                      style={{
-                        background: mergeCtx.primaryId === c.id ? '#ecfdf5' : undefined,
-                        borderTop: '1px solid #f1f5f9'
-                      }}
+                      className={mergeCtx.primaryId === c.id ? 'is-selected' : undefined}
                     >
-                      <td style={{ padding: 8 }}>{c.code}</td>
-                      <td style={{ padding: 8 }}>
+                      <td>{c.code}</td>
+                      <td>
                         {c.firstName} {c.lastName}
                       </td>
-                      <td style={{ padding: 8 }}>{c.phone}</td>
-                      <td style={{ padding: 8, textAlign: 'right' }}>
+                      <td>{c.phone}</td>
+                      <td className="align-right">
                         <Button
                           variant={mergeCtx.primaryId === c.id ? 'primary' : 'secondary'}
                           onClick={() => setMergeCtx({ ...mergeCtx, primaryId: c.id })}
@@ -342,7 +332,7 @@ export const ClientsPage = () => {
                   ))}
                   {mergeCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: 12, color: '#6b7280' }}>
+                      <td colSpan={4} className="mini-table-empty">
                         No hay coincidencias. Ajusta el término de búsqueda.
                       </td>
                     </tr>

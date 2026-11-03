@@ -449,10 +449,10 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
               </Button>
               {forceApplicationCopies && (
                 <label
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}
+                  className="copies-field"
                   title="Cada copia se envía como un trabajo de impresión independiente."
                 >
-                  <span style={{ whiteSpace: 'nowrap' }}>Copias</span>
+                  <span>Copias</span>
                   <input
                     className="field"
                     type="number"
@@ -466,7 +466,6 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
                       if (!Number.isFinite(parsed)) return;
                       setCopies(Math.min(MAX_COPIES, Math.max(1, Math.trunc(parsed))));
                     }}
-                    style={{ width: 68 }}
                   />
                 </label>
               )}
@@ -502,13 +501,13 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
         />
 
         {printProgressLabel && (
-          <p style={{ margin: '8px 0 0', color: '#2563eb', fontWeight: 600 }}>
+          <p className="note-info spaced-top" role="status">
             {printProgressLabel}
           </p>
         )}
 
         {!printProgress && pendingCopies && (
-          <p style={{ margin: '8px 0 0' }} className="error-text">
+          <p className="error-text spaced-top" role="alert">
             Se imprimió {pendingCopies.done} de {pendingCopies.total}{' '}
             {pendingCopies.total === 1 ? 'copia' : 'copias'}. Falta
             {pendingCopies.jobs.length === 1 ? ' 1 copia' : ` ${pendingCopies.jobs.length} copias`}{' '}
@@ -516,12 +515,9 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
           </p>
         )}
 
-        <div
-          className="card-panel"
-          style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
-        >
-          <strong style={{ fontSize: 14 }}>Notas de la factura</strong>
-          <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
+        <div className="card-panel invoice-notes">
+          <strong className="form-subtitle">Notas de la factura</strong>
+          <p className="field-hint">
             Aparecen como "Notas generales" en la impresión térmica. El guardado es manual:
             escribe y pulsa "Guardar notas" cuando termines.
           </p>
@@ -534,34 +530,20 @@ export const InvoiceDetailPage = ({ user }: { user: SessionUser }) => {
             placeholder="Escribe aquí las notas que aparecerán en la factura impresa..."
             rows={3}
             maxLength={1000}
-            style={{
-              width: '100%',
-              padding: 8,
-              fontSize: 13,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              resize: 'vertical',
-              fontFamily: 'inherit'
-            }}
+            className="field notes-field"
+            aria-label="Notas de la factura"
           />
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-              justifyContent: 'flex-end'
-            }}
-          >
+          <div className="invoice-notes-actions">
             {notesEdited && !notesMutation.isPending ? (
-              <span style={{ fontSize: 12, color: '#b45309' }}>
+              <span className="save-state is-dirty">
                 Cambios sin guardar
               </span>
             ) : null}
             {notesMutation.isPending ? (
-              <span style={{ fontSize: 12, color: '#2563eb' }}>Guardando...</span>
+              <span className="save-state is-saving">Guardando...</span>
             ) : null}
             {notesMutation.isSuccess && !notesEdited ? (
-              <span style={{ fontSize: 12, color: '#16a34a' }}>Guardado correctamente</span>
+              <span className="save-state is-saved" role="status">Guardado correctamente</span>
             ) : null}
             <Button
               variant="secondary"

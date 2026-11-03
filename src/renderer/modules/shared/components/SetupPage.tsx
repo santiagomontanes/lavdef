@@ -216,7 +216,7 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
             Este asistente se muestra cuando no existe una base configurada o la conexión actual falló.
           </p>
           {healthMessage ? (
-            <p className="alert-warning" style={{ marginTop: 12 }}>
+            <p className="alert-warning spaced-top">
               {healthMessage}
             </p>
           ) : null}
@@ -226,14 +226,11 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
           {[1, 2, 3].map((wizardStep) => (
             <div
               key={wizardStep}
-              className="card-panel"
-              style={{
-                border: wizardStep === step ? '2px solid #4f6ef7' : '1px solid #e5ebf1',
-                padding: 16
-              }}
+              className={`card-panel wizard-step${wizardStep === step ? ' is-current' : ''}`}
+              aria-current={wizardStep === step ? 'step' : undefined}
             >
               <strong>Paso {wizardStep}</strong>
-              <p style={{ margin: '8px 0 0' }}>
+              <p className="text-tight">
                 {wizardStep === 1
                   ? 'Crear base de datos'
                   : wizardStep === 2
@@ -313,47 +310,30 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
             </p>
 
             {schemaProgress ? (
-              <div className="card-panel" style={{ background: '#f8fafc' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    marginBottom: 8,
-                    fontSize: 14
-                  }}
-                >
+              <div className="card-panel card-muted">
+                <div className="progress-head">
                   <strong>{schemaProgress.message}</strong>
                   <span>{schemaProgress.percent}%</span>
                 </div>
 
                 <div
-                  style={{
-                    width: '100%',
-                    height: 12,
-                    borderRadius: 999,
-                    background: '#dbe4f0',
-                    overflow: 'hidden'
-                  }}
+                  className="progress-track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={schemaProgress.percent}
                 >
-                  <div
-                    style={{
-                      width: `${schemaProgress.percent}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #4f6ef7 0%, #6ea8fe 100%)',
-                      transition: 'width 180ms ease'
-                    }}
-                  />
+                  <div className="progress-fill" style={{ width: `${schemaProgress.percent}%` }} />
                 </div>
 
-                <p style={{ margin: '8px 0 0', fontSize: 14 }}>
+                <p className="text-tight">
                   {schemaProgress.file
                     ? `Archivo actual: ${schemaProgress.file} (${schemaProgress.current}/${schemaProgress.total})`
                     : `Preparando scripts...`}
                 </p>
 
                 {schemaSummary.length ? (
-                  <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4b5563' }}>
+                  <p className="text-note is-small">
                     Completados: {schemaSummary.join(', ')}
                   </p>
                 ) : null}
@@ -386,15 +366,15 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
             <h3>Paso 3. Usuario MySQL y usuarios del sistema</h3>
 
             {schemaSummary.length ? (
-              <div className="card-panel" style={{ background: '#f8fafc' }}>
+              <div className="card-panel card-muted">
                 <strong>Scripts ejecutados</strong>
-                <p style={{ margin: '8px 0 0' }}>{schemaSummary.join(', ')}</p>
+                <p className="text-tight">{schemaSummary.join(', ')}</p>
               </div>
             ) : null}
 
             <div className="detail-grid">
               <div className="stack-gap">
-                <h4 style={{ margin: 0 }}>Conexión final de la aplicación</h4>
+                <h4 className="form-subtitle">Conexión final de la aplicación</h4>
 
                 <label>
                   <span>Usuario MySQL</span>
@@ -415,7 +395,7 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
               </div>
 
               <div className="stack-gap">
-                <h4 style={{ margin: 0 }}>Administrador</h4>
+                <h4 className="form-subtitle">Administrador</h4>
 
                 <label>
                   <span>Username</span>
@@ -450,8 +430,8 @@ export const SetupPage = ({ healthMessage, onCompleted }: Props) => {
               </div>
             </div>
 
-            <div className="card-panel stack-gap" style={{ background: '#f8fafc' }}>
-              <h4 style={{ margin: 0 }}>Vendedor</h4>
+            <div className="card-panel stack-gap card-muted">
+              <h4 className="form-subtitle">Vendedor</h4>
 
               <div className="detail-grid">
                 <label>

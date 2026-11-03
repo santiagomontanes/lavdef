@@ -3,6 +3,7 @@ import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import type { BatchPaymentInput, CatalogsPayload, PaymentLineInput } from '@shared/types';
 import { Button, Input, PriceInput, Select } from '@renderer/ui/components';
 import { currency } from '@renderer/utils/format';
+import { IconPlus } from '@renderer/ui/components/icons';
 
 type FormValues = {
   lines: PaymentLineInput[];
@@ -69,7 +70,7 @@ export const PaymentForm = ({
     >
       <div className="stack-gap">
         {fields.map((field, index) => (
-          <div key={field.id} className="card-panel" style={{ padding: '12px 16px' }}>
+          <div key={field.id} className="card-panel item-card">
             <div className="form-grid">
               <label>
                 <span>Método de pago</span>
@@ -104,7 +105,7 @@ export const PaymentForm = ({
               </label>
 
               {fields.length > 1 && (
-                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <div className="align-end">
                   <Button type="button" variant="danger" disabled={isSubmitting} onClick={() => remove(index)}>
                     Quitar
                   </Button>
@@ -117,16 +118,17 @@ export const PaymentForm = ({
         <Button
           type="button"
           variant="secondary"
+          className="button-add"
           disabled={isSubmitting}
           onClick={() =>
             append({ paymentMethodId: defaultMethodId, amount: 0, reference: null })
           }
         >
-          + Agregar método de pago
+          <IconPlus /> Agregar método de pago
         </Button>
       </div>
 
-      <div className="card-panel stack-gap" style={{ background: '#f8fafc' }}>
+      <div className="card-panel stack-gap card-muted">
         <div className="detail-row">
           <span>Saldo pendiente</span>
           <strong>{currency(Number(balanceDue || 0))}</strong>
@@ -139,18 +141,18 @@ export const PaymentForm = ({
           <span>Se aplicará al pago</span>
           <strong>{currency(amountApplied)}</strong>
         </div>
-        <div className="detail-row">
+        <div className={`detail-row${change > 0 ? ' is-highlight' : ''}`}>
           <span>Cambio a devolver</span>
           <strong>{currency(change)}</strong>
         </div>
-        <div className="detail-row">
+        <div className={`detail-row is-total ${pendingAfter > 0 ? 'is-debt' : 'is-paid'}`}>
           <span>Saldo después del pago</span>
           <strong>{currency(pendingAfter)}</strong>
         </div>
       </div>
 
       <div className="form-actions">
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" className="button-lg" disabled={isSubmitting}>
           {isSubmitting ? 'Registrando pago...' : 'Registrar pago'}
         </Button>
       </div>

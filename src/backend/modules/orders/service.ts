@@ -970,10 +970,12 @@ export const createOrdersService = (db: Kysely<Database>) => {
           .select((eb) => eb.fn.count<number>('id').as('count'))
           .executeTakeFirstOrThrow(),
 
+        // Abiertas = todavía no entregadas ni canceladas (con o sin saldo).
         db
-          .selectFrom('orders')
-          .select((eb) => eb.fn.count<number>('id').as('count'))
-          .where('balance_due', '>', 0)
+          .selectFrom('orders as o')
+          .innerJoin('order_statuses as s', 's.id', 'o.status_id')
+          .select((eb) => eb.fn.count<number>('o.id').as('count'))
+          .where(sql<boolean>`UPPER(s.code) NOT IN ('DELIVERED','CANCELLED','CANCELED','CANCELADO')`)
           .executeTakeFirstOrThrow(),
 
         db
@@ -1001,7 +1003,7 @@ export const createOrdersService = (db: Kysely<Database>) => {
           .where('created_at', '>=', new Date(new Date().toDateString()))
           .executeTakeFirst(),
 
-        repository.list(),
+        repository.listRecent(5),
 
         db
           .selectFrom('payments as p')

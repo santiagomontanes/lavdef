@@ -59,6 +59,14 @@ export const createOrderRepository = (db: Kysely<Database>) => ({
     .select(baseOrderSelection)
     .orderBy('o.id', 'desc')
     .execute(),
+  listRecent: (limit: number) => db
+    .selectFrom('orders as o')
+    .innerJoin('clients as c', 'c.id', 'o.client_id')
+    .innerJoin('order_statuses as s', 's.id', 'o.status_id')
+    .select(baseOrderSelection)
+    .orderBy('o.id', 'desc')
+    .limit(limit)
+    .execute(),
   findById: (id: number) => db
     .selectFrom('orders as o')
     .innerJoin('clients as c', 'c.id', 'o.client_id')

@@ -166,7 +166,7 @@ export const WarrantiesPage = () => {
               key: 'order',
               header: 'Orden',
               render: (row) => (
-                <div style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                <div className="nowrap strong-text">
                   {row.orderNumber}
                 </div>
               )
@@ -175,7 +175,7 @@ export const WarrantiesPage = () => {
               key: 'client',
               header: 'Cliente',
               render: (row) => (
-                <div style={{ minWidth: 180 }}>
+                <div className="cell-min-180">
                   {row.clientName}
                 </div>
               )
@@ -184,7 +184,7 @@ export const WarrantiesPage = () => {
               key: 'status',
               header: 'Estado',
               render: (row) => (
-                <div style={{ whiteSpace: 'nowrap' }}>
+                <div className="nowrap">
                   <StatusChip label={row.statusName} color={row.statusColor} />
                 </div>
               )
@@ -193,7 +193,7 @@ export const WarrantiesPage = () => {
               key: 'reason',
               header: 'Motivo',
               render: (row) => (
-                <div style={{ minWidth: 240, maxWidth: 320 }}>
+                <div className="cell-text">
                   {row.reason}
                 </div>
               )
@@ -202,7 +202,7 @@ export const WarrantiesPage = () => {
               key: 'resolution',
               header: 'Resolución',
               render: (row) => (
-                <div style={{ minWidth: 240, maxWidth: 320 }}>
+                <div className="cell-text">
                   {row.resolution || '—'}
                 </div>
               )
@@ -211,7 +211,7 @@ export const WarrantiesPage = () => {
               key: 'date',
               header: 'Fecha',
               render: (row) => (
-                <div style={{ whiteSpace: 'nowrap' }}>
+                <div className="nowrap">
                   {dateTime(row.createdAt)}
                 </div>
               )
@@ -221,9 +221,9 @@ export const WarrantiesPage = () => {
               header: 'Acciones',
               render: (row) =>
                 ['RESOLVED', 'CLOSED', 'RESUELTA', 'CERRADA'].includes(row.statusCode) ? (
-                  <span style={{ whiteSpace: 'nowrap', opacity: 0.7 }}>Cerrada</span>
+                  <span className="nowrap muted-text">Cerrada</span>
                 ) : (
-                  <div style={{ whiteSpace: 'nowrap' }}>
+                  <div className="nowrap">
                     <Button
                       type="button"
                       variant="secondary"
@@ -283,7 +283,6 @@ export const WarrantiesPage = () => {
                 }))
               }
               placeholder="Describe el motivo de la garantía"
-              style={{ resize: 'vertical', paddingTop: 12 }}
             />
           </label>
 
@@ -322,17 +321,14 @@ export const WarrantiesPage = () => {
       >
         <div className="stack-gap">
           {selectedWarranty && (
-            <div
-              className="card-panel"
-              style={{ padding: 16, background: 'rgba(0,0,0,0.02)' }}
-            >
-              <p style={{ margin: 0 }}>
+            <div className="card-panel card-muted summary-lines">
+              <p>
                 <strong>Orden:</strong> {selectedWarranty.orderNumber}
               </p>
-              <p style={{ margin: '6px 0 0 0' }}>
+              <p>
                 <strong>Cliente:</strong> {selectedWarranty.clientName}
               </p>
-              <p style={{ margin: '6px 0 0 0' }}>
+              <p>
                 <strong>Motivo:</strong> {selectedWarranty.reason}
               </p>
             </div>
@@ -346,7 +342,6 @@ export const WarrantiesPage = () => {
               value={resolution}
               onChange={(e) => setResolution(e.target.value)}
               placeholder="Ejemplo: se volvió a lavar la prenda sin costo / se realizó ajuste / se hizo devolución..."
-              style={{ resize: 'vertical', paddingTop: 12 }}
             />
           </label>
 

@@ -45,35 +45,7 @@ export const LoginPage = ({ onLogin }: Props) => {
           type="button"
           onClick={() => api.quitApp()}
           title="Cerrar aplicación"
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '7px 14px',
-            background: 'rgba(0,0,0,0.18)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: 8,
-            color: 'rgba(255,255,255,0.75)',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-            backdropFilter: 'blur(4px)',
-            transition: 'background 0.15s, color 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(220,50,50,0.75)';
-            (e.currentTarget as HTMLButtonElement).style.color = '#fff';
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(220,50,50,0.4)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.18)';
-            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.75)';
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.15)';
-          }}
+          className="auth-close"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M1 1L12 12M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>

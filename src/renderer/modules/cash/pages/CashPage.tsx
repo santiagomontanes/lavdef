@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@renderer/services/api';
 import { useHardwareAvailability } from '@renderer/hooks/useHardwareAvailability';
@@ -663,9 +663,17 @@ export const CashPage = () => {
   const [historyFrom, setHistoryFrom] = useState('');
   const [historyTo, setHistoryTo] = useState('');
 
+  // Sugerir la base una sola vez: si la consulta se refresca, no borrar lo que el usuario escribió.
+  const openingPrefilledRef = useRef(false);
   useEffect(() => {
-    if (!data?.activeSession) {
-      setOpeningAmount(Number(data?.suggestedOpeningAmount ?? 0));
+    if (!data) return;
+    if (data.activeSession) {
+      openingPrefilledRef.current = false;
+      return;
+    }
+    if (!openingPrefilledRef.current) {
+      openingPrefilledRef.current = true;
+      setOpeningAmount(Number(data.suggestedOpeningAmount ?? 0));
     }
   }, [data]);
 

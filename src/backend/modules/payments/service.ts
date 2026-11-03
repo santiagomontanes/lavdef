@@ -567,6 +567,18 @@ export const createPaymentsService = (db: Kysely<Database>) => {
         throw new Error('Este pago ya fue anulado.');
       }
 
+      // Sin caja abierta la anulación no quedaría en ningún arqueo y la caja descuadraría.
+      const activeCashSession = await trx
+        .selectFrom('cash_sessions')
+        .select(['id'])
+        .where('status', '=', 'open')
+        .orderBy('id', 'desc')
+        .executeTakeFirst();
+
+      if (!activeCashSession) {
+        throw new Error('La caja está cerrada. Ábrela antes de anular un pago para que quede en el arqueo.');
+      }
+
       await trx.updateTable('payments').set({
         status: 'VOIDED',
         voided_at: sql`NOW()` as unknown as Date,
@@ -576,21 +588,53 @@ export const createPaymentsService = (db: Kysely<Database>) => {
 
       const totals = await recalculateOrderTotals(trx, Number(payment.order_id), Number(payment.total));
 
-      const activeCashSession = await trx
-        .selectFrom('cash_sessions')
-        .select(['id'])
-        .where('status', '=', 'open')
-        .orderBy('id', 'desc')
-        .executeTakeFirst();
+      await trx.insertInto('cash_movements').values({
+        cash_session_id: activeCashSession.id,
+        movement_type: 'PAYMENT_VOID_OUT',
+        amount: Number(payment.amount),
+        notes: `Anulación pago #${parsed.paymentId} orden #${payment.order_id} · ${payment.payment_method_name}${payment.reference ? ` · Ref: ${payment.reference}` : ''}`,
+        created_by: actorId
+      }).execute();
 
-      if (activeCashSession) {
-        await trx.insertInto('cash_movements').values({
-          cash_session_id: activeCashSession.id,
-          movement_type: 'PAYMENT_VOID_OUT',
-          amount: Number(payment.amount),
-          notes: `Anulación pago #${parsed.paymentId} orden #${payment.order_id} · ${payment.payment_method_name}${payment.reference ? ` · Ref: ${payment.reference}` : ''}`,
-          created_by: actorId
-        }).execute();
+      // Si el pago había pasado la orden a "Listo para entregar" automáticamente
+      // y ahora vuelve a deber, regresa a "Listo".
+      if (totals.balanceDue > 0) {
+        const lastHistory = await trx
+          .selectFrom('order_status_history as h')
+          .innerJoin('order_statuses as s', 's.id', 'h.status_id')
+          .innerJoin('orders as o', 'o.id', 'h.order_id')
+          .select(['h.notes', sql<string>`s.code`.as('code'), 'o.status_id', 'h.status_id as history_status_id'])
+          .where('h.order_id', '=', Number(payment.order_id))
+          .orderBy('h.id', 'desc')
+          .executeTakeFirst();
+
+        const wasAutoReady =
+          lastHistory &&
+          String(lastHistory.code).toUpperCase() === 'READY_FOR_DELIVERY' &&
+          lastHistory.status_id === lastHistory.history_status_id &&
+          String(lastHistory.notes ?? '').startsWith('Estado automático: orden pagada completamente');
+
+        if (wasAutoReady) {
+          const readyStatus = await trx
+            .selectFrom('order_statuses')
+            .select(['id'])
+            .where('code', '=', 'READY')
+            .executeTakeFirst();
+
+          if (readyStatus) {
+            await trx
+              .updateTable('orders')
+              .set({ status_id: readyStatus.id, status_changed_at: sql`NOW()` as unknown as Date } as any)
+              .where('id', '=', Number(payment.order_id))
+              .execute();
+
+            await trx.insertInto('order_status_history').values({
+              order_id: Number(payment.order_id),
+              status_id: readyStatus.id,
+              notes: 'Estado automático: pago anulado, la orden vuelve a tener saldo'
+            }).execute();
+          }
+        }
       }
 
       await trx.insertInto('audit_logs').values({

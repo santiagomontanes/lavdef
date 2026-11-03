@@ -146,7 +146,7 @@ export const ExpensesPage = () => {
       />
 
       <div className="card-panel stack-gap">
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="toolbar is-flush">
           <Input
             placeholder="Buscar por descripción o categoría"
             value={search}
