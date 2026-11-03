@@ -89,8 +89,11 @@ export const createOrderRepository = (db: Kysely<Database>) => ({
   // El join a invoices es 1:1 (uk_invoices_order_id, migración 018), por
   // lo que no hace falta GROUP BY para evitar filas duplicadas.
   listPage: async ({ status, search, limit, offset }: OrdersListPageFilters) => {
-    const term = String(search ?? '').trim();
+    const term = String(search ?? '').trim().replace(/\s+/g, ' ');
     const likeTerm = `%${term}%`;
+    // Nombre y apellido en cualquier orden: cada palabra debe aparecer en el
+    // nombre completo del cliente ("perez juan" encuentra a "Juan Pérez").
+    const words = term.split(' ').filter(Boolean);
 
     const baseFrom = () =>
       db
@@ -106,7 +109,17 @@ export const createOrderRepository = (db: Kysely<Database>) => ({
               eb('o.manual_order_number', 'like', likeTerm),
               eb('c.phone', 'like', likeTerm),
               eb('i.invoice_number', 'like', likeTerm),
-              sql<boolean>`CONCAT(c.first_name, ' ', c.last_name) LIKE ${likeTerm}`
+              sql<boolean>`CONCAT(c.first_name, ' ', c.last_name) LIKE ${likeTerm}`,
+              ...(words.length > 1
+                ? [
+                    eb.and(
+                      words.map(
+                        (word) =>
+                          sql<boolean>`CONCAT(c.first_name, ' ', c.last_name) LIKE ${`%${word}%`}`
+                      )
+                    )
+                  ]
+                : [])
             ])
           )
         );

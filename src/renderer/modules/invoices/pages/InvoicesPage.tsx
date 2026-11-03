@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '@renderer/services/api';
 import { DataTable, PageHeader, Button, Input } from '@renderer/ui/components';
 import { currency, dateTime } from '@renderer/utils/format';
-import { normalizeScan } from '@renderer/utils/normalize';
+import { normalizeScan, normalizeSearchText } from '@renderer/utils/normalize';
 
 export const InvoicesPage = () => {
   const queryClient = useQueryClient();
@@ -45,12 +45,18 @@ export const InvoicesPage = () => {
       const clientName = normalizeScan(invoice.clientName ?? '');
       const ticketCode = normalizeScan(invoice.ticketCode ?? '');
 
-      return (
+      if (
         invoiceNumber.includes(search) ||
         orderId.includes(search) ||
         clientName.includes(search) ||
         ticketCode.includes(search)
-      );
+      ) {
+        return true;
+      }
+
+      // Nombre y apellido en cualquier orden: cada palabra debe estar en el nombre.
+      const words = normalizeSearchText(filter).trim().split(' ').map(normalizeScan).filter(Boolean);
+      return words.length > 1 && words.every((word) => clientName.includes(word));
     });
   }, [data, filter]);
 
@@ -66,7 +72,7 @@ export const InvoicesPage = () => {
           <Input
             placeholder="Filtrar por factura, orden, cliente o ticket"
             value={filter}
-            onChange={(e) => setFilter(normalizeScan(e.target.value))}
+            onChange={(e) => setFilter(normalizeSearchText(e.target.value))}
           />
         </div>
 

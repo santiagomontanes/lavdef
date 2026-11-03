@@ -5,7 +5,7 @@ import { api } from '@renderer/services/api';
 import { DataTable, Input, Modal, PageHeader, StatusChip } from '@renderer/ui/components';
 import { IconPlus } from '@renderer/ui/components/icons';
 import { currency, dateTime } from '@renderer/utils/format';
-import { normalizeScan } from '@renderer/utils/normalize';
+import { normalizeScan, normalizeSearchText } from '@renderer/utils/normalize';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -93,8 +93,9 @@ export const OrdersPage = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ orderId: number; statusId: number } | null>(null);
 
+  // Texto de búsqueda: conserva espacios para nombre + apellido.
   const normalizeScannedCode = (value: string) => {
-    const text = normalizeScan(value);
+    const text = normalizeSearchText(value).trim();
     if (text.startsWith('TK-')) return text.slice(3);
     return text;
   };
@@ -239,7 +240,8 @@ export const OrdersPage = () => {
   };
 
   useEffect(() => {
-    const normalized = normalizeScannedCode(debouncedSearch);
+    // Para el escaneo de código se compara sin espacios.
+    const normalized = normalizeScan(normalizeScannedCode(debouncedSearch));
     if (!normalized) return;
     if (tryNavigateLocal(normalized)) return;
 
@@ -262,7 +264,7 @@ export const OrdersPage = () => {
   }, [debouncedSearch]);
 
   const handleSearchChange = (value: string) => {
-    setSearch(normalizeScan(value));
+    setSearch(normalizeSearchText(value));
   };
 
   return (
