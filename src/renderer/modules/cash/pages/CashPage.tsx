@@ -654,6 +654,14 @@ export const CashPage = () => {
   const [historicClosurePasswordError, setHistoricClosurePasswordError] = useState<string | null>(null);
   const [pendingHistoricClosureId, setPendingHistoricClosureId] = useState<number | null>(null);
 
+  // Llevar la vista al detalle: se pinta fuera de pantalla y parecería que el botón no hizo nada.
+  const closureDetailRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (lastClosedPreview) {
+      closureDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [lastClosedPreview]);
+
   const [movementType, setMovementType] = useState<'CASH_IN' | 'CASH_OUT'>('CASH_IN');
   const [movementAmount, setMovementAmount] = useState(0);
   const [movementNotes, setMovementNotes] = useState('');
@@ -1558,8 +1566,8 @@ export const CashPage = () => {
       )}
 
       {closurePreview && (
-        <div className="card-panel stack-gap card-muted">
-          <h3>Último cierre generado</h3>
+        <div ref={closureDetailRef} className="card-panel stack-gap card-muted">
+          <h3>Cierre de caja · Sesión #{closurePreview.cashSessionId}</h3>
 
           <div className="closure-result">
             <p className="text-tight">
