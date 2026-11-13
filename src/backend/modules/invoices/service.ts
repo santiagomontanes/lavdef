@@ -273,7 +273,6 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         'i.subtotal',
         'i.tax_total',
         'i.total',
-        'i.legal_text',
         'i.created_at',
         'o.due_date',
         'o.notes as order_notes',
@@ -294,9 +293,12 @@ export const createInvoicesService = (db: Kysely<Database>) => {
       .orderBy('i.id', 'desc')
       .execute();
 
+    // El listado no muestra logo, políticas ni texto legal: copiarlos en cada fila
+    // (el logo es base64) multiplicaba el tamaño de la respuesta y congelaba la pantalla.
     return rows.map((row) =>
       mapInvoice({
         ...row,
+        legal_text: null,
         client_name: `${row.first_name} ${row.last_name}`,
         ticket_code: buildTicketCode(row.order_number),
         company_name: company?.company_name ?? null,
@@ -305,8 +307,8 @@ export const createInvoicesService = (db: Kysely<Database>) => {
         company_email: company?.email ?? null,
         company_address: company?.address ?? null,
         company_nit: company?.nit ?? null,
-        company_logo: company?.logo_base64 ?? null,
-        company_policies: company?.invoice_policies ?? null
+        company_logo: null,
+        company_policies: null
       })
     );
   };

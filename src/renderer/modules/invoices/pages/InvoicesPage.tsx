@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@renderer/services/api';
@@ -6,9 +6,13 @@ import { DataTable, PageHeader, Button, Input } from '@renderer/ui/components';
 import { currency, dateTime } from '@renderer/utils/format';
 import { normalizeScan, normalizeSearchText } from '@renderer/utils/normalize';
 
+// Dibujar miles de filas de golpe bloquea la pantalla; se muestran por bloques.
+const PAGE_SIZE = 100;
+
 export const InvoicesPage = () => {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const { data = [] } = useQuery({
     queryKey: ['invoices'],
@@ -60,6 +64,15 @@ export const InvoicesPage = () => {
     });
   }, [data, filter]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filter]);
+
+  const visibleInvoices = useMemo(
+    () => filteredInvoices.slice(0, visibleCount),
+    [filteredInvoices, visibleCount]
+  );
+
   return (
     <section className="stack-gap">
       <PageHeader
@@ -77,7 +90,7 @@ export const InvoicesPage = () => {
         </div>
 
         <DataTable
-          rows={filteredInvoices}
+          rows={visibleInvoices}
           columns={[
             { key: 'invoice', header: 'Factura', render: (row) => row.invoiceNumber },
             { key: 'order', header: 'Orden', render: (row) => row.orderId },
@@ -112,6 +125,21 @@ export const InvoicesPage = () => {
             }
           ]}
         />
+
+        {filteredInvoices.length > visibleCount && (
+          <div className="form-actions">
+            <span className="text-tight">
+              Mostrando {visibleCount} de {filteredInvoices.length} facturas
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+            >
+              Mostrar más
+            </Button>
+          </div>
+        )}
       </div>
 
       {whatsappMutation.isError && (
