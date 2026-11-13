@@ -761,14 +761,17 @@ export const CashPage = () => {
       setHistoricClosurePassword('');
       setHistoricClosurePasswordError(null);
       setPendingHistoricClosureId(null);
+    },
+    onError: (error: Error) => {
+      setHistoricClosurePasswordError(error.message || 'No se pudo cargar el cierre.');
     }
   });
 
   const verifyHistoricClosurePasswordMutation = useMutation({
     mutationFn: (password: string) => api.verifyPassword(password),
-    onSuccess: async () => {
+    onSuccess: () => {
       if (pendingHistoricClosureId === null) return;
-      await loadHistoricClosureMutation.mutateAsync(pendingHistoricClosureId);
+      loadHistoricClosureMutation.mutate(pendingHistoricClosureId);
     },
     onError: (error: Error) => {
       setHistoricClosurePasswordError(error.message);
@@ -841,13 +844,18 @@ export const CashPage = () => {
     setHistoricClosurePasswordModal(true);
   };
 
-  const handleConfirmHistoricClosurePassword = async () => {
+  const isUnlockingHistoricClosure =
+    verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending;
+
+  const handleConfirmHistoricClosurePassword = () => {
+    if (isUnlockingHistoricClosure) return;
     if (!historicClosurePassword.trim()) {
       setHistoricClosurePasswordError('Debes ingresar la contraseña.');
       return;
     }
 
-    await verifyHistoricClosurePasswordMutation.mutateAsync(historicClosurePassword);
+    setHistoricClosurePasswordError(null);
+    verifyHistoricClosurePasswordMutation.mutate(historicClosurePassword);
   };
 
   const handlePrintThermalClose = () => {
@@ -1806,7 +1814,13 @@ export const CashPage = () => {
           setPendingHistoricClosureId(null);
         }}
       >
-        <div className="stack-gap">
+        <form
+          className="stack-gap"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleConfirmHistoricClosurePassword();
+          }}
+        >
           <p className="text-tight">
             Ingresa la misma contraseña administrativa usada para editar órdenes.
           </p>
@@ -1815,6 +1829,7 @@ export const CashPage = () => {
             <span>Contraseña</span>
             <Input
               type="password"
+              autoFocus
               value={historicClosurePassword}
               onChange={(e) => setHistoricClosurePassword(e.target.value)}
             />
@@ -1826,6 +1841,7 @@ export const CashPage = () => {
 
           <div className="form-actions">
             <Button
+              type="button"
               variant="secondary"
               onClick={() => {
                 setHistoricClosurePasswordModal(false);
@@ -1836,16 +1852,11 @@ export const CashPage = () => {
             >
               Cancelar
             </Button>
-            <Button
-              onClick={handleConfirmHistoricClosurePassword}
-              disabled={verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending}
-            >
-              {verifyHistoricClosurePasswordMutation.isPending || loadHistoricClosureMutation.isPending
-                ? 'Verificando...'
-                : 'Confirmar'}
+            <Button type="submit" disabled={isUnlockingHistoricClosure}>
+              {isUnlockingHistoricClosure ? 'Verificando...' : 'Ver cierre'}
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal

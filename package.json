@@ -1,6 +1,6 @@
 {
   "name": "lavanderia-sastreria-desktop",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "commonjs",
   "description": "Aplicación de escritorio para gestión de lavandería y sastrería",
